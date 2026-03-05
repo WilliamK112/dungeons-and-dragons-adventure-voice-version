@@ -1,0 +1,5 @@
+{
+  "name": "Dungeons and Dragons Adventure-Voice version",
+  "description": "An interactive, branching text adventure powered by Gemini. Embark on an epic fantasy quest in a world of magic and monsters, manage your stats, and shape the story. You can also generate a cinematic video plan of your playthrough.",
+  "requestFramePermissions": []
+}
