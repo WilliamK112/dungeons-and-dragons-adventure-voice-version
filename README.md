@@ -1,6 +1,9 @@
 <div align="center">
   <img width="1200" height="475" alt="Dungeons & Dragons Adventure Banner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 
+  ![Google Studio Scene 11](./video111/11.png)
+  ![Google Studio Scene 22](./video111/22.png)
+
   # Dungeons & Dragons Adventure (Voice + AI Media)
 
   An interactive, turn-based fantasy web app where players make choices, evolve story state, and generate scene images/videos with Gemini.
@@ -85,11 +88,6 @@ npm run preview
 
 - YouTube Demo: https://youtu.be/VU-bBSGqal0
 - Sample local media assets are in `video111/` (includes `1.mp4` and scene images)
-
-### Google Studio scene images
-
-![Google Studio Scene 11](./video111/11.png)
-![Google Studio Scene 22](./video111/22.png)
 
 ---
 
