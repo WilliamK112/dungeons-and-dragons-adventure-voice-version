@@ -86,6 +86,11 @@ npm run preview
 - YouTube Demo: https://youtu.be/VU-bBSGqal0
 - Sample local media assets are in `video111/` (includes `1.mp4` and scene images)
 
+### Google Studio scene images
+
+![Google Studio Scene 11](./video111/11.png)
+![Google Studio Scene 22](./video111/22.png)
+
 ---
 
 ## 📂 Project Structure
