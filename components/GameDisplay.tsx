@@ -19,6 +19,16 @@ interface GameDisplayProps {
   recentRoll?: string;
 }
 
+const getActionTypeTag = (text: string): 'Action' | 'Move' | 'Bonus' | 'Reaction' | null => {
+  const match = text.match(/^\[(Action|Move|Bonus|Reaction)\]/i);
+  if (!match) return null;
+  const normalized = match[1].toLowerCase();
+  if (normalized === 'action') return 'Action';
+  if (normalized === 'move') return 'Move';
+  if (normalized === 'bonus') return 'Bonus';
+  return 'Reaction';
+};
+
 const GameDisplay: React.FC<GameDisplayProps> = ({ 
     sceneText, 
     choices, 
@@ -103,16 +113,24 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
         ) : (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {choices.map((choice) => (
+              {choices.map((choice) => {
+                const actionTag = getActionTypeTag(choice.text);
+                const cleanText = choice.text.replace(/^\[(Action|Move|Bonus|Reaction)\]\s*/i, '');
+                return (
                 <button
                   key={choice.id}
                   onClick={() => onChoiceSelect(choice.id)}
                   disabled={isLoading}
                   className="w-full text-left bg-slate-800/50 hover:bg-slate-700/70 text-amber-200 font-medium py-3 px-5 rounded-lg transition-all duration-200 border border-amber-800/50 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {choice.text}
+                  {actionTag && (
+                    <span className="inline-block mr-2 mb-1 text-[10px] uppercase tracking-wide bg-amber-500/20 text-amber-300 border border-amber-400/40 rounded px-1.5 py-0.5">
+                      {actionTag}
+                    </span>
+                  )}
+                  <span>{cleanText}</span>
                 </button>
-              ))}
+              )})}
             </div>
 
             <form onSubmit={handleCustomSubmit} className="mt-6">
