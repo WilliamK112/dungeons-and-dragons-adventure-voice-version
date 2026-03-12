@@ -60,10 +60,12 @@ You will receive a request object: { command: string, payload: any }.
    - The response must be a GameState object.
 
 2. IF command is "RESOLVE_ACTION":
-   - The payload will be { currentState: GameState, choiceId: number | null, customActionText?: string }.
+   - The payload will be { currentState: GameState, choiceId: number | null, choiceText?: string, customActionText?: string }.
    - The action is taken by the player at \`currentState.currentPlayerIndex\`. All narrative and stat changes should apply to this player unless the action logically affects others.
    - If 'customActionText' is provided, you MUST ignore 'choiceId' and generate the next scene based on the player's custom-written action. The action should be plausible for the current scene.
-   - If 'customActionText' is NOT provided, use the 'choiceId' to determine the outcome.
+   - If 'customActionText' is NOT provided, use BOTH 'choiceId' and 'choiceText' (if present) to determine the outcome.
+   - CRITICAL: Different choices must produce meaningfully different consequences. Do NOT return near-identical scene outcomes for different choice ids.
+   - The first 1-2 sentences of the new scene MUST explicitly reflect the chosen action and immediate consequence.
    - Generate the next scene, choices, and updated player stats for the acting player.
    - Append a concise, one-sentence summary of the action and outcome to the \`currentState.log\`.
    - Return the complete, updated state object, including the full \`players\` array. The client will handle advancing the turn.

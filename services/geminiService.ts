@@ -112,7 +112,10 @@ export const createCharacterAndStartGame = async (players: { name: string, role:
 };
 
 export const resolveAction = async (currentState: GameState, choiceId: number | null, customActionText?: string): Promise<GameState> => {
-    const payload = { currentState, choiceId, customActionText };
+    const choiceText = choiceId === null
+        ? undefined
+        : currentState.choices.find((c) => c.id === choiceId)?.text;
+    const payload = { currentState, choiceId, choiceText, customActionText };
     return callGemini("RESOLVE_ACTION", payload, GAME_STATE_SCHEMA);
 };
 
