@@ -73,7 +73,7 @@ You will receive a request object: { command: string, payload: any }.
    - Make the scene vivid and interesting with concrete sensory details, tension, and a clear immediate objective.
    - Ensure narrative continuity: the acting player's class/backstory/stats should influence outcomes and flavor.
    - DICE RULE: Resolve risky actions with explicit d20-style logic. Determine a DC and relevant modifier (strength/agility/intellect/luck), then narrate outcome from that roll result.
-   - LOG FORMAT RULE: Add one concise roll entry to \`log\` in this format: \`[ROLL] d20(<roll>) + mod(<mod>) vs DC(<dc>) => <total> : <SUCCESS|FAIL>\`.
+   - LOG FORMAT RULE: Add one concise roll entry to \`log\` in this format: \`[ROLL][<ATTACK|CHECK|SAVE>] d20(<roll>) + mod(<mod>) vs <AC|DC>(<target>) => <total> : <SUCCESS|FAIL>\`.
    - REVIVAL RULE: If action text indicates resurrection/revive and at least one player is dead, you may revive exactly one dead player by setting health to 25-40 and mana to max(0, current mana - 30) or equivalent cost; also apply a meaningful drawback (e.g., temporary stat penalty, resource loss, or danger escalation) and log it.
    - Generate the next scene, choices, and updated player stats for the acting player.
    - Append a concise, one-sentence summary of the action and outcome to the \`currentState.log\`.
