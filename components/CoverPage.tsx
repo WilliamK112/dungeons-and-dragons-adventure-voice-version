@@ -119,13 +119,12 @@ const CoverPage: React.FC<CoverPageProps> = ({ onStart, isLoading, error, onConn
                 </motion.div>
 
                 <motion.button
-                    whileHover={{ scale: isApiKeySelected ? 1.05 : 1 }}
-                    whileTap={{ scale: isApiKeySelected ? 0.95 : 1 }}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                     onClick={onStart}
-                    disabled={!isApiKeySelected}
-                    className="bg-amber-700 hover:bg-amber-600 disabled:bg-zinc-700 disabled:text-zinc-300 disabled:cursor-not-allowed text-white text-2xl font-bold py-5 px-12 rounded-lg transition-all duration-300 shadow-lg shadow-amber-700/30 hover:shadow-xl hover:shadow-amber-600/40 focus:outline-none focus:ring-4 focus:ring-amber-500 focus:ring-opacity-50"
+                    className="bg-amber-700 hover:bg-amber-600 text-white text-2xl font-bold py-5 px-12 rounded-lg transition-all duration-300 shadow-lg shadow-amber-700/30 hover:shadow-xl hover:shadow-amber-600/40 focus:outline-none focus:ring-4 focus:ring-amber-500 focus:ring-opacity-50"
                 >
-                    {isApiKeySelected ? 'Start the Game' : 'Add API Key to Start'}
+                    Start the Game
                 </motion.button>
 
                 {!isApiKeySelected && (
