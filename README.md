@@ -195,6 +195,7 @@ flowchart LR
 - `docs/submission-checklist.md` — judge evidence checklist
 - `docs/gcp-proof-checklist.md` — Cloud proof artifact checklist
 - `docs/devpost-submission-draft.md` — ready-to-fill Devpost submission draft
+- `docs/competition-requirement-matrix.md` — judge-facing requirement status + proof outputs
 - `docs/live-adk-implementation-plan.md` — Live API/ADK implementation roadmap
 
 ## 🔐 Privacy
