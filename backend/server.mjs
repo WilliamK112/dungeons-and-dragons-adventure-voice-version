@@ -104,6 +104,11 @@ app.get('/api/compliance/status', (_req, res) => {
   return res.json({
     ok: true,
     track: 'Creative Storyteller',
+    deployment: {
+      project: process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT || null,
+      region: process.env.CLOUD_RUN_REGION || null,
+      service: process.env.K_SERVICE || null,
+    },
     requirements: {
       geminiModel: true,
       genaiSdkOrAdk: true,
