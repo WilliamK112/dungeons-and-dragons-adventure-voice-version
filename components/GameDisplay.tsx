@@ -105,7 +105,13 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
               <p className="mt-2 text-sm text-emerald-300/90 italic">Consequence: {recentOutcome}</p>
             )}
             {recentRoll && (
-              <p className="mt-1 text-xs text-cyan-300/90 font-mono">{recentRoll}</p>
+              <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
+                <span className="text-[10px] uppercase tracking-wide bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 rounded px-1.5 py-0.5">Roll</span>
+                <p className="text-xs text-cyan-300/90 font-mono">{recentRoll}</p>
+                <span className={`text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 border ${/SUCCESS/i.test(recentRoll) ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40' : 'bg-rose-500/20 text-rose-300 border-rose-400/40'}`}>
+                  {/SUCCESS/i.test(recentRoll) ? 'Success' : 'Fail'}
+                </span>
+              </div>
             )}
         </div>
         {isLoading ? (
