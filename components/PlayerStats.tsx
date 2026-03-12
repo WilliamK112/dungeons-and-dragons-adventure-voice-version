@@ -1,7 +1,6 @@
 
 import React from 'react';
 import { Player } from '../types';
-import { isDead } from '../utils/turnOrder';
 
 interface PlayerStatsListProps {
   players: Player[];
@@ -11,7 +10,6 @@ interface PlayerStatsListProps {
 interface PlayerStatsCardProps {
     player: Player;
     isActive: boolean;
-    isDead: boolean;
 }
 
 const StatBar: React.FC<{ label: string; value: number; color: string; isProgress?: boolean }> = ({ label, value, color, isProgress = false }) => {
@@ -42,26 +40,14 @@ const StatBar: React.FC<{ label: string; value: number; color: string; isProgres
     );
 };
 
-/** Semi-transparent but obvious red X overlay for dead characters. */
-const DeadOverlay: React.FC<{ className?: string }> = ({ className = '' }) => (
-  <div className={`absolute inset-0 pointer-events-none flex items-center justify-center ${className}`} aria-hidden>
-    <svg viewBox="0 0 100 100" className="w-full h-full" style={{ filter: 'drop-shadow(0 0 6px rgba(239,68,68,0.9))' }}>
-      <line x1="10" y1="10" x2="90" y2="90" stroke="#ef4444" strokeOpacity={0.8} strokeWidth="10" strokeLinecap="round" />
-      <line x1="90" y1="10" x2="10" y2="90" stroke="#ef4444" strokeOpacity={0.8} strokeWidth="10" strokeLinecap="round" />
-    </svg>
-  </div>
-);
-
-const PlayerStatsCard: React.FC<PlayerStatsCardProps> = ({ player, isActive, isDead: dead }) => {
+const PlayerStatsCard: React.FC<PlayerStatsCardProps> = ({ player, isActive }) => {
     const { stats } = player;
     return (
-        <div className={`relative bg-gray-900/50 backdrop-blur-sm p-4 rounded-lg border shadow-lg transition-all duration-300 ${dead ? 'border-red-900/50' : isActive ? 'border-amber-500 shadow-amber-500/20' : 'border-amber-800/20 shadow-amber-800/5'}`}>
-            {dead && <DeadOverlay />}
+        <div className={`bg-gray-900/50 backdrop-blur-sm p-4 rounded-lg border shadow-lg transition-all duration-300 ${isActive ? 'border-amber-500 shadow-amber-500/20' : 'border-amber-800/20 shadow-amber-800/5'}`}>
             <div className='flex justify-between items-start mb-4'>
                 <div>
                     <h2 className="text-xl font-bold text-amber-300">{player.name}</h2>
-                    {isActive && !dead && <span className="text-xs font-bold bg-amber-500 text-gray-900 px-2 py-1 rounded-full">CURRENT TURN</span>}
-                {dead && <span className="text-xs font-bold bg-red-600 text-white px-2 py-1 rounded-full">DEAD</span>}
+                    {isActive && <span className="text-xs font-bold bg-amber-500 text-gray-900 px-2 py-1 rounded-full">CURRENT TURN</span>}
                 </div>
                 {player.portraitUrl && (
                     <img 
@@ -122,24 +108,10 @@ const PlayerStatsCard: React.FC<PlayerStatsCardProps> = ({ player, isActive, isD
 const PlayerStatsList: React.FC<PlayerStatsListProps> = ({ players, currentPlayerIndex }) => {
   if (!players || players.length === 0) return null;
 
-  const currentPlayer = players[currentPlayerIndex];
-  const sortedPlayers = [...players].sort((a, b) => {
-    const aDead = isDead(a);
-    const bDead = isDead(b);
-    if (aDead && !bDead) return 1;
-    if (!aDead && bDead) return -1;
-    return 0;
-  });
-
   return (
     <aside className="w-full lg:w-1/3 space-y-4">
-        {sortedPlayers.map((player) => (
-            <PlayerStatsCard
-              key={player.name}
-              player={player}
-              isActive={currentPlayer?.name === player.name}
-              isDead={isDead(player)}
-            />
+        {players.map((player, index) => (
+            <PlayerStatsCard key={player.name} player={player} isActive={index === currentPlayerIndex} />
         ))}
     </aside>
   );
