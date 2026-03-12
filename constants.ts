@@ -71,7 +71,7 @@ You will receive a request object: { command: string, payload: any }.
    - The response must be a GameState object.
 
 2. IF command is "RESOLVE_ACTION":
-   - The payload will be { currentState: GameState, choiceId: number | null, choiceText?: string, customActionText?: string }.
+   - The payload will be { currentState: GameState, choiceId: number | null, choiceText?: string, customActionText?: string, preRolledD20?: number, actingPlayerName?: string }.
    - The action is taken by the player at \`currentState.currentPlayerIndex\`. All narrative and stat changes should apply to this player unless the action logically affects others.
    - If 'customActionText' is provided, you MUST ignore 'choiceId' and generate the next scene based on the player's custom-written action. The action should be plausible for the current scene.
    - If 'customActionText' is NOT provided, use BOTH 'choiceId' and 'choiceText' (if present) to determine the outcome.
@@ -80,6 +80,7 @@ You will receive a request object: { command: string, payload: any }.
    - Make the scene vivid and interesting with concrete sensory details, tension, and a clear immediate objective.
    - Ensure narrative continuity: the acting player's class/backstory/stats should influence outcomes and flavor.
    - DICE RULE: Resolve risky actions with explicit d20-style logic. Determine a DC and relevant modifier (strength/agility/intellect/luck), then narrate outcome from that roll result.
+   - If preRolledD20 is provided in payload, you MUST use that exact d20 value for the primary action resolution roll.
    - COMBAT DAMAGE RULE: For attacks, first evaluate hit/miss vs AC, then roll damage dice and apply exact HP change. Suggested baselines: Warrior weapon hit ~1d12+STR mod, Rogue hit ~1d8+AGI mod, Mage spell hit ~1d10+INT mod, monster hit ~1d6 to 2d10 depending on threat.
    - LOG FORMAT RULE: Add one concise roll entry to \`log\` in this format: \`[ROLL][<ATTACK|CHECK|SAVE>] d20(<roll>) + mod(<mod>) vs <AC|DC>(<target>) => <total> : <SUCCESS|FAIL>\`.
    - DAMAGE LOG RULE: when a combat hit lands, add a second concise entry: \`[DMG] <source> -> <target> : <diceBreakdown> = <damage> (HP <before> -> <after>)\`.

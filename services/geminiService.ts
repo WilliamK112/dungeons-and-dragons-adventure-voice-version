@@ -138,12 +138,18 @@ const didStateActuallyChange = (before: GameState, after: GameState): boolean =>
     return !(sameScene && sameChoices);
 };
 
-export const resolveAction = async (currentState: GameState, choiceId: number | null, customActionText?: string): Promise<GameState> => {
+export const resolveAction = async (
+    currentState: GameState,
+    choiceId: number | null,
+    customActionText?: string,
+    preRolledD20?: number,
+    actingPlayerName?: string,
+): Promise<GameState> => {
     const choiceText = choiceId === null
         ? undefined
         : currentState.choices.find((c) => c.id === choiceId)?.text;
 
-    const payload = { currentState, choiceId, choiceText, customActionText };
+    const payload = { currentState, choiceId, choiceText, customActionText, preRolledD20, actingPlayerName };
     let nextState = await callGemini("RESOLVE_ACTION", payload, GAME_STATE_SCHEMA);
 
     // Reliability guard: if model returns effectively unchanged scene/options,
@@ -155,6 +161,8 @@ export const resolveAction = async (currentState: GameState, choiceId: number | 
             choiceId: null,
             choiceText,
             customActionText: fallbackAction,
+            preRolledD20,
+            actingPlayerName,
         };
         nextState = await callGemini("RESOLVE_ACTION", retryPayload, GAME_STATE_SCHEMA);
     }

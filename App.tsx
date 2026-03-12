@@ -56,6 +56,9 @@ const App: React.FC = () => {
   const [isApiKeySelected, setIsApiKeySelected] = useState<boolean>(false);
   const [apiKeyInput, setApiKeyInput] = useState<string>('');
   const [playerNextTurnAt, setPlayerNextTurnAt] = useState<Record<string, number>>({});
+  const [currentD20Roll, setCurrentD20Roll] = useState<number | null>(null);
+  const [isRollingD20, setIsRollingD20] = useState(false);
+  const [lastD20ByPlayer, setLastD20ByPlayer] = useState<Record<string, number>>({});
 
   useEffect(() => {
     const checkApiKey = async () => {
@@ -169,6 +172,15 @@ const App: React.FC = () => {
     if (!opts?.keepImage) setSceneImageUrl(null);
   };
 
+  const rollVisualD20 = async (): Promise<number> => {
+    setIsRollingD20(true);
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    const result = Math.floor(Math.random() * 20) + 1;
+    setCurrentD20Roll(result);
+    setIsRollingD20(false);
+    return result;
+  };
+
   const handleStartGame = () => {
     setError(null);
     setCurrentView('creation');
@@ -211,14 +223,19 @@ const App: React.FC = () => {
     }
   }, [generateAndSetImage]);
 
-  const handleAction = useCallback(async (getAction: (gs: GameState) => Promise<GameState>, actionContext: string) => {
+  const handleAction = useCallback(async (getAction: (gs: GameState, rolledD20: number) => Promise<GameState>, actionContext: string) => {
     if (!gameState || isLoading) return;
 
     try {
       setIsLoading(true);
       setError(null);
       resetMedia({ keepImage: true });
-      const nextState = await getAction(gameState);
+      const rolledD20 = await rollVisualD20();
+      const actingName = gameState.players[gameState.currentPlayerIndex]?.name;
+      if (actingName) {
+        setLastD20ByPlayer((prev) => ({ ...prev, [actingName]: rolledD20 }));
+      }
+      const nextState = await getAction(gameState, rolledD20);
       
       // Preserve portrait URLs and descriptions from the old state, as the AI response won't contain them.
       const playersWithPortraits = nextState.players.map(player => {
@@ -273,12 +290,12 @@ const App: React.FC = () => {
   const handleChoiceSelect = (choiceId: number) => {
     playChoiceClick();
     const choiceText = gameState?.choices.find((c) => c.id === choiceId)?.text || `Choice ${choiceId}`;
-    handleAction((gs) => geminiService.resolveAction(gs, choiceId), choiceText);
+    handleAction((gs, rolledD20) => geminiService.resolveAction(gs, choiceId, undefined, rolledD20, gs.players[gs.currentPlayerIndex]?.name), choiceText);
   };
   
   const handleCustomActionSubmit = (customActionText: string) => {
     playChoiceClick();
-    handleAction((gs) => geminiService.resolveAction(gs, null, customActionText), customActionText);
+    handleAction((gs, rolledD20) => geminiService.resolveAction(gs, null, customActionText, rolledD20, gs.players[gs.currentPlayerIndex]?.name), customActionText);
   };
 
 
@@ -354,6 +371,9 @@ const App: React.FC = () => {
             recentOutcome={recentOutcome}
             recentRoll={recentRoll}
             recentEvent={recentEvent}
+            currentD20Roll={currentD20Roll}
+            isRollingD20={isRollingD20}
+            previousD20ForCurrentPlayer={lastD20ByPlayer[currentPlayer.name] ?? null}
           />
           <PlayerStatsList players={gameState.players} currentPlayerIndex={gameState.currentPlayerIndex} />
         </div>

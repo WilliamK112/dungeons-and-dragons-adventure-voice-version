@@ -2,6 +2,7 @@
 import React, { useState, FormEvent } from 'react';
 import { Choice } from '../types';
 import LoadingSpinner from './LoadingSpinner';
+import D20Roller from './D20Roller';
 
 interface GameDisplayProps {
   sceneText: string;
@@ -18,6 +19,9 @@ interface GameDisplayProps {
   recentOutcome?: string;
   recentRoll?: string;
   recentEvent?: string;
+  currentD20Roll?: number | null;
+  isRollingD20?: boolean;
+  previousD20ForCurrentPlayer?: number | null;
 }
 
 const getActionTypeTag = (text: string): 'Action' | 'Move' | 'Bonus' | 'Reaction' | null => {
@@ -44,7 +48,10 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
     currentPlayerName,
     recentOutcome,
     recentRoll,
-    recentEvent
+    recentEvent,
+    currentD20Roll,
+    isRollingD20,
+    previousD20ForCurrentPlayer
 }) => {
   const showVideoButton = !isGeneratingImage && !isGeneratingVideoScene && sceneImageUrl && !sceneVideoUrl;
   const [customAction, setCustomAction] = useState('');
@@ -119,6 +126,12 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
               <p className="mt-1 text-xs text-violet-300/90">✨ {recentEvent}</p>
             )}
         </div>
+        <D20Roller
+          value={currentD20Roll ?? null}
+          isRolling={Boolean(isRollingD20)}
+          currentPlayerName={currentPlayerName}
+          previousForCurrent={previousD20ForCurrentPlayer ?? null}
+        />
         {isLoading ? (
           <p className="text-amber-400 italic text-center">The Dungeon Master is pondering your fate...</p>
         ) : (
