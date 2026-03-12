@@ -140,6 +140,21 @@ const didStateActuallyChange = (before: GameState, after: GameState): boolean =>
     return (!sameScene || !sameChoices) && !sameLogTail;
 };
 
+const toModelState = (state: GameState): GameState => {
+    // Prevent huge payloads from portrait base64 strings / verbose fields causing model stalls.
+    const slimPlayers = state.players.map((p) => ({
+        ...p,
+        portraitUrl: '',
+        description: (p.description || '').slice(0, 240),
+    }));
+
+    return {
+        ...state,
+        players: slimPlayers,
+        log: (state.log || []).slice(-20),
+    };
+};
+
 export const resolveAction = async (
     currentState: GameState,
     choiceId: number | null,
@@ -151,7 +166,8 @@ export const resolveAction = async (
         ? undefined
         : currentState.choices.find((c) => c.id === choiceId)?.text;
 
-    const basePayload = { currentState, choiceId, choiceText, customActionText, preRolledD20, actingPlayerName };
+    const modelState = toModelState(currentState);
+    const basePayload = { currentState: modelState, choiceId, choiceText, customActionText, preRolledD20, actingPlayerName };
     let nextState = await callGemini("RESOLVE_ACTION", basePayload, GAME_STATE_SCHEMA);
 
     // Reliability guard: if model returns unchanged content, retry with increasingly explicit anti-repeat instructions.
