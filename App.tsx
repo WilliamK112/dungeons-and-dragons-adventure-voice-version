@@ -27,6 +27,11 @@ const getApiKeyStatus = (key: string, isSelected: boolean): ApiKeyStatus => {
 };
 
 const App: React.FC = () => {
+  useEffect(() => {
+    const fallback = document.getElementById('boot-fallback');
+    if (fallback) fallback.remove();
+  }, []);
+
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
