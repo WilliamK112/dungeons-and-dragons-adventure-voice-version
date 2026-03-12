@@ -72,10 +72,10 @@ VITE_BACKEND_URL=https://your-cloud-run-service-url
 ### 3) Run
 
 ```bash
-npm run dev
+npm run dev:local
 ```
 
-Open: `http://localhost:5173`
+Open: `http://127.0.0.1:5173` (recommended over localhost)
 
 ### 4) Build / Preview
 
