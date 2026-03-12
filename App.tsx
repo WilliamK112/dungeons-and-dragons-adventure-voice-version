@@ -374,6 +374,7 @@ const App: React.FC = () => {
             onCustomActionSubmit={handleCustomActionSubmit}
             currentPlayerName={currentPlayer.name}
             recentOutcome={recentOutcome}
+            hasDeadPlayers={gameState.players.some((p) => (p.stats?.health ?? 0) <= 0)}
           />
           <PlayerStatsList players={gameState.players} currentPlayerIndex={gameState.currentPlayerIndex} />
         </div>

@@ -36,6 +36,8 @@ GAME MECHANICS:
 - Choices must be 3-5 specific, distinct options.
 - Story branches should be surprising, high-stakes, and fun (mystery, danger, reward, twists).
 - The players' goal is to explore the Sunken Citadel and retrieve the Dragon's Eye.
+- Dead players (health <= 0) cannot take normal actions until revived.
+- Revival is possible but costly and risky: only via explicit resurrection attempts (spell/ritual/relic/potion/altar), with meaningful tradeoffs.
 
 ACTION HANDLING:
 You will receive a request object: { command: string, payload: any }.
@@ -69,6 +71,7 @@ You will receive a request object: { command: string, payload: any }.
    - The first 1-2 sentences of the new scene MUST explicitly reflect the chosen action and immediate consequence.
    - Make the scene vivid and interesting with concrete sensory details, tension, and a clear immediate objective.
    - Ensure narrative continuity: the acting player's class/backstory/stats should influence outcomes and flavor.
+   - REVIVAL RULE: If action text indicates resurrection/revive and at least one player is dead, you may revive exactly one dead player by setting health to 25-40 and mana to max(0, current mana - 30) or equivalent cost; also apply a meaningful drawback (e.g., temporary stat penalty, resource loss, or danger escalation) and log it.
    - Generate the next scene, choices, and updated player stats for the acting player.
    - Append a concise, one-sentence summary of the action and outcome to the \`currentState.log\`.
    - Return the complete, updated state object, including the full \`players\` array. The client will handle advancing the turn.

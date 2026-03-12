@@ -16,6 +16,7 @@ interface GameDisplayProps {
   onCustomActionSubmit: (customAction: string) => void;
   currentPlayerName: string;
   recentOutcome?: string;
+  hasDeadPlayers?: boolean;
 }
 
 const GameDisplay: React.FC<GameDisplayProps> = ({ 
@@ -30,7 +31,8 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
     onGenerateVideo,
     onCustomActionSubmit,
     currentPlayerName,
-    recentOutcome
+    recentOutcome,
+    hasDeadPlayers
 }) => {
   const showVideoButton = !isGeneratingImage && !isGeneratingVideoScene && sceneImageUrl && !sceneVideoUrl;
   const [customAction, setCustomAction] = useState('');
@@ -91,6 +93,9 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
             <p className="text-xs text-amber-600/80 mt-1">Turn order is speed-based — higher agility acts more often.</p>
             {recentOutcome && (
               <p className="mt-2 text-sm text-emerald-300/90 italic">Consequence: {recentOutcome}</p>
+            )}
+            {hasDeadPlayers && (
+              <p className="mt-1 text-xs text-rose-300/90">A fallen ally can only return via explicit revival action (spell/ritual/relic), with a real cost.</p>
             )}
         </div>
         {isLoading ? (
