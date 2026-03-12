@@ -17,6 +17,7 @@ interface GameDisplayProps {
   currentPlayerName: string;
   recentOutcome?: string;
   recentRoll?: string;
+  recentEvent?: string;
 }
 
 const getActionTypeTag = (text: string): 'Action' | 'Move' | 'Bonus' | 'Reaction' | null => {
@@ -42,7 +43,8 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
     onCustomActionSubmit,
     currentPlayerName,
     recentOutcome,
-    recentRoll
+    recentRoll,
+    recentEvent
 }) => {
   const showVideoButton = !isGeneratingImage && !isGeneratingVideoScene && sceneImageUrl && !sceneVideoUrl;
   const [customAction, setCustomAction] = useState('');
@@ -112,6 +114,9 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
                   {/SUCCESS/i.test(recentRoll) ? 'Success' : 'Fail'}
                 </span>
               </div>
+            )}
+            {recentEvent && (
+              <p className="mt-1 text-xs text-violet-300/90">✨ {recentEvent}</p>
             )}
         </div>
         {isLoading ? (

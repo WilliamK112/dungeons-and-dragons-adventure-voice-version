@@ -353,6 +353,7 @@ const App: React.FC = () => {
             currentPlayerName={currentPlayer.name}
             recentOutcome={recentOutcome}
             recentRoll={recentRoll}
+            recentEvent={recentEvent}
           />
           <PlayerStatsList players={gameState.players} currentPlayerIndex={gameState.currentPlayerIndex} />
         </div>
@@ -389,6 +390,7 @@ const App: React.FC = () => {
 
   const recentOutcome = gameState?.log?.[gameState.log.length - 1] || '';
   const recentRoll = [...(gameState?.log || [])].reverse().find((entry) => entry.startsWith('[ROLL]')) || '';
+  const recentEvent = [...(gameState?.log || [])].reverse().find((entry) => entry.startsWith('[EVENT]')) || '';
   const isTenseScene = /dragon|ambush|trap|blood|curse|dark|shadow|battle|danger|attack|scream/i.test(gameState?.sceneText || '');
 
   return (
