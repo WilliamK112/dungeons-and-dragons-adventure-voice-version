@@ -107,13 +107,20 @@ const CoverPage: React.FC<CoverPageProps> = ({ onStart, isLoading, error, onConn
                 </motion.div>
 
                 <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                    whileHover={{ scale: isApiKeySelected ? 1.05 : 1 }}
+                    whileTap={{ scale: isApiKeySelected ? 0.95 : 1 }}
                     onClick={onStart}
-                    className="bg-amber-700 hover:bg-amber-600 text-white text-2xl font-bold py-5 px-12 rounded-lg transition-all duration-300 shadow-lg shadow-amber-700/30 hover:shadow-xl hover:shadow-amber-600/40 focus:outline-none focus:ring-4 focus:ring-amber-500 focus:ring-opacity-50"
+                    disabled={!isApiKeySelected}
+                    className="bg-amber-700 hover:bg-amber-600 disabled:bg-zinc-700 disabled:text-zinc-300 disabled:cursor-not-allowed text-white text-2xl font-bold py-5 px-12 rounded-lg transition-all duration-300 shadow-lg shadow-amber-700/30 hover:shadow-xl hover:shadow-amber-600/40 focus:outline-none focus:ring-4 focus:ring-amber-500 focus:ring-opacity-50"
                 >
-                    Start the Game
+                    {isApiKeySelected ? 'Start the Game' : 'Add API Key to Start'}
                 </motion.button>
+
+                {!isApiKeySelected && (
+                  <p className="text-amber-300/80 text-xs max-w-md">
+                    Quick start: create key in Google AI Studio, paste it above, click <strong>Save Key</strong>, then start.
+                  </p>
+                )}
 
                 <motion.p 
                   animate={{ opacity: [0.4, 0.8, 0.4] }}
