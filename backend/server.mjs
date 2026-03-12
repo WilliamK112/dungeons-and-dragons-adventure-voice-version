@@ -44,6 +44,29 @@ app.post('/api/story/next', async (req, res) => {
   }
 });
 
+// Live API/ADK readiness endpoint for hackathon compliance tracking.
+// This is a scaffold endpoint; wire real Live session creation/token exchange next.
+app.post('/api/live/session', async (_req, res) => {
+  return res.status(501).json({
+    ok: false,
+    status: 'not_implemented',
+    message: 'Live session bootstrap not implemented yet. Next step: integrate Gemini Live API or ADK session orchestration on Cloud Run.',
+  });
+});
+
+app.get('/api/compliance/status', (_req, res) => {
+  return res.json({
+    ok: true,
+    track: 'Creative Storyteller',
+    requirements: {
+      geminiModel: true,
+      genaiSdkOrAdk: true,
+      liveApiOrAdk: false,
+      googleCloudBackend: 'in_progress',
+    },
+  });
+});
+
 app.listen(port, () => {
   console.log(`dnd-gemini-backend listening on :${port}`);
 });

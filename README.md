@@ -188,6 +188,7 @@ flowchart LR
 - `backend/Dockerfile` — Cloud Run container target
 - `backend/README.md` — local run + Cloud Run deploy command
 - `docs/submission-checklist.md` — judge evidence checklist
+- `docs/live-adk-implementation-plan.md` — Live API/ADK implementation roadmap
 
 ## 🔐 Privacy
 
