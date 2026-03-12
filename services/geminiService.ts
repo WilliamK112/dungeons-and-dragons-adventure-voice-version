@@ -50,6 +50,10 @@ function parseGeminiError(e: unknown): string {
         return "This feature (like image or video generation) requires a paid Gemini API key. You can still play the text adventure!";
     }
 
+    if (/aborted|AbortError|timed out|timeout/i.test(errorMessage)) {
+        return "The request timed out. Try the same action again — the server may be waking up.";
+    }
+
     const isQuotaError = /quota exceeded|RESOURCE_EXHAUSTED/i.test(errorMessage);
     if (isQuotaError) {
         return "You've exceeded your API usage quota. Please try again in a few minutes.";
@@ -62,23 +66,40 @@ async function callGemini(command: string, payload: any, schema: any): Promise<a
     try {
         const backendBaseUrl = getBackendBaseUrl();
         if (backendBaseUrl) {
-            const response = await fetch(`${backendBaseUrl}/api/game/command`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    command,
-                    payload,
-                    schema,
-                    systemInstruction: SYSTEM_INSTRUCTION,
-                    model: GEMINI_MODEL,
-                }),
-            });
+            const requestBody = {
+                command,
+                payload,
+                schema,
+                systemInstruction: SYSTEM_INSTRUCTION,
+                model: GEMINI_MODEL,
+            };
 
-            const data = await response.json();
-            if (!response.ok || !data?.ok) {
-                throw new Error(data?.error || `Backend call failed with ${response.status}`);
-            }
-            return data.data;
+            const callBackend = async (attempt: number) => {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 25000);
+                try {
+                    const response = await fetch(`${backendBaseUrl}/api/game/command`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(requestBody),
+                        signal: controller.signal,
+                    });
+
+                    const data = await response.json();
+                    if (!response.ok || !data?.ok) {
+                        const isRetryable = response.status >= 500;
+                        if (isRetryable && attempt < 2) {
+                            return callBackend(attempt + 1);
+                        }
+                        throw new Error(data?.error || `Backend call failed with ${response.status}`);
+                    }
+                    return data.data;
+                } finally {
+                    clearTimeout(timeout);
+                }
+            };
+
+            return await callBackend(1);
         }
 
         const ai = getAI();
