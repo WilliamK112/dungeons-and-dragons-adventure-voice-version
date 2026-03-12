@@ -19,8 +19,8 @@ Use this file as evidence prep for Devpost submission.
 ## Copy/paste evidence block for submission
 
 - Cloud Run service URL: 
-- Region: 
-- Project ID: 
+- Region: us-central1
+- Project ID: gen-lang-client-0096929751
 - Screenshot links: 
 - Code links:
   - backend/server.mjs
