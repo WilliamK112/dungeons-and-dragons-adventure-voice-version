@@ -135,7 +135,9 @@ export const createCharacterAndStartGame = async (players: { name: string, role:
 const didStateActuallyChange = (before: GameState, after: GameState): boolean => {
     const sameScene = (before.sceneText || '').trim() === (after.sceneText || '').trim();
     const sameChoices = JSON.stringify(before.choices || []) === JSON.stringify(after.choices || []);
-    return !(sameScene && sameChoices);
+    const sameLogTail = (before.log?.[before.log.length - 1] || '').trim() === (after.log?.[after.log.length - 1] || '').trim();
+    // Consider it updated only when at least scene OR choices changed, and log tail is not identical.
+    return (!sameScene || !sameChoices) && !sameLogTail;
 };
 
 export const resolveAction = async (
@@ -149,22 +151,42 @@ export const resolveAction = async (
         ? undefined
         : currentState.choices.find((c) => c.id === choiceId)?.text;
 
-    const payload = { currentState, choiceId, choiceText, customActionText, preRolledD20, actingPlayerName };
-    let nextState = await callGemini("RESOLVE_ACTION", payload, GAME_STATE_SCHEMA);
+    const basePayload = { currentState, choiceId, choiceText, customActionText, preRolledD20, actingPlayerName };
+    let nextState = await callGemini("RESOLVE_ACTION", basePayload, GAME_STATE_SCHEMA);
 
-    // Reliability guard: if model returns effectively unchanged scene/options,
-    // force a second pass with explicit action text.
+    // Reliability guard: if model returns unchanged content, retry with increasingly explicit anti-repeat instructions.
     if (!didStateActuallyChange(currentState, nextState)) {
         const fallbackAction = customActionText?.trim() || `I choose: ${choiceText || `option ${choiceId}`}`;
-        const retryPayload = {
-            currentState,
+
+        const retryPayload1 = {
+            ...basePayload,
             choiceId: null,
-            choiceText,
-            customActionText: fallbackAction,
-            preRolledD20,
-            actingPlayerName,
+            customActionText: `${fallbackAction}. IMPORTANT: produce a NEW scene and NEW options different from previous output.`,
         };
-        nextState = await callGemini("RESOLVE_ACTION", retryPayload, GAME_STATE_SCHEMA);
+        nextState = await callGemini("RESOLVE_ACTION", retryPayload1, GAME_STATE_SCHEMA);
+
+        if (!didStateActuallyChange(currentState, nextState)) {
+            const retryPayload2 = {
+                ...basePayload,
+                choiceId: null,
+                customActionText: `${fallbackAction}. FORCE BRANCH SHIFT: introduce a new event, new immediate consequence, and different tactical choices.`,
+            };
+            nextState = await callGemini("RESOLVE_ACTION", retryPayload2, GAME_STATE_SCHEMA);
+        }
+    }
+
+    // Last-resort local nudge to avoid frozen UX if model still echoes prior state.
+    if (!didStateActuallyChange(currentState, nextState)) {
+        const actionLabel = customActionText?.trim() || choiceText || `option ${choiceId}`;
+        nextState = {
+            ...nextState,
+            sceneText: `Following ${actionLabel}, the situation shifts: ${nextState.sceneText}`,
+            choices: (nextState.choices || []).map((c, i) => ({
+                ...c,
+                text: `${c.text} ${i === 0 ? '(new opening)' : '(new branch)'}`,
+            })),
+            log: [...(nextState.log || []), `[EVENT] Forced branch update applied after repeated identical AI response.`],
+        };
     }
 
     return nextState;
