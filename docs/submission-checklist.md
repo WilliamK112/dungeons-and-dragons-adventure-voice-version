@@ -10,7 +10,8 @@ Track: **Creative Storyteller**
 - [ ] Backend hosted on Google Cloud (Cloud Run)
 - [ ] At least one Google Cloud service demonstrated
 - [ ] Public repository with reproducible setup
-- [ ] Architecture diagram
+- [x] Architecture diagram (`docs/architecture.md`)
+- [x] Demo checklist (`docs/demo-checklist.md`)
 - [ ] <4 minute demo video
 - [ ] Cloud deployment proof
 

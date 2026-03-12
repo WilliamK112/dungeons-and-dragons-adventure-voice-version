@@ -181,8 +181,9 @@ flowchart LR
 
 1. Cloud Run backend migration for story/media orchestration
 2. Gemini Live/ADK integration path for real-time multimodal interaction
-3. Final architecture diagram image in `/docs/architecture.png`
+3. Final architecture diagram in `/docs/architecture.md` (export image for submission upload)
 4. Dedicated submission checklist + proof links section
+5. Demo runbook checklist in `/docs/demo-checklist.md`
 
 ### New cloud backend scaffold (added)
 
