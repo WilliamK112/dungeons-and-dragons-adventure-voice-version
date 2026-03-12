@@ -12,6 +12,7 @@ Use this file as evidence prep for Devpost submission.
    - `backend/server.mjs`
    - `backend/Dockerfile`
    - `backend/deploy-cloud-run.sh`
+   - `docs/cloud-deploy-now.md`
 4. **Frontend backend routing proof**
    - `.env.local` contains `VITE_BACKEND_URL`
    - `services/geminiService.ts` shows backend routing path
