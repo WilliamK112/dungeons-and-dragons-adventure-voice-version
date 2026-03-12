@@ -32,7 +32,35 @@
 <link rel="stylesheet" href="/index.css">
 </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="boot-fallback" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;">
+        <div style="max-width:760px;width:100%;background:rgba(0,0,0,.35);border:1px solid rgba(251,191,36,.35);border-radius:12px;padding:20px;color:#fcd34d;">
+          <h1 style="font-size:22px;margin:0 0 8px 0;">Loading your adventure...</h1>
+          <p style="opacity:.9;margin:0;">If this stays blank for more than 5 seconds, press <strong>Cmd+Shift+R</strong> to hard refresh.</p>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.__BOOT_ERRORS__ = [];
+      window.addEventListener('error', function (event) {
+        window.__BOOT_ERRORS__.push(String(event?.error?.message || event?.message || 'Unknown script error'));
+      });
+      window.addEventListener('unhandledrejection', function (event) {
+        window.__BOOT_ERRORS__.push(String(event?.reason?.message || event?.reason || 'Unhandled promise rejection'));
+      });
+      setTimeout(function () {
+        var fallback = document.getElementById('boot-fallback');
+        if (!fallback) return;
+        var reason = (window.__BOOT_ERRORS__ && window.__BOOT_ERRORS__[0]) || 'App failed to mount (possible stale cache or runtime crash).';
+        fallback.innerHTML =
+          '<div style="max-width:760px;width:100%;background:rgba(0,0,0,.35);border:1px solid rgba(251,191,36,.35);border-radius:12px;padding:20px;color:#fcd34d;">' +
+          '<h1 style="font-size:22px;margin:0 0 8px 0;">Startup glitch detected.</h1>' +
+          '<p style="opacity:.9;margin:0 0 10px 0;">Try hard refresh (Cmd+Shift+R) or open the latest deployment link.</p>' +
+          '<p style="font-size:12px;color:#fca5a5;word-break:break-word;margin:0 0 14px 0;">' + reason + '</p>' +
+          '<button onclick="location.reload()" style="background:#b45309;color:white;border:none;padding:10px 14px;border-radius:8px;cursor:pointer;">Reload Adventure</button>' +
+          '</div>';
+      }, 5000);
+    </script>
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>

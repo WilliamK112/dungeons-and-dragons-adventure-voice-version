@@ -17,3 +17,8 @@ root.render(
     </ErrorBoundary>
   </React.StrictMode>
 );
+
+requestAnimationFrame(() => {
+  const fallback = document.getElementById('boot-fallback');
+  if (fallback) fallback.remove();
+});
