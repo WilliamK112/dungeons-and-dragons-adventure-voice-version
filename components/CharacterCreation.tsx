@@ -129,11 +129,14 @@ const CharacterCreation: React.FC<CharacterCreationProps> = ({ onSubmit, isLoadi
       alert("Please fill out a name and backstory for every player.");
       return;
     }
-    if (players.some(p => !p.portraitUrl)) {
-        alert("Please generate a portrait for every player before beginning.");
-        return;
-    }
-    onSubmit(players);
+
+    const finalizedPlayers = players.map((p, index) => ({
+      ...p,
+      portraitUrl: p.portraitUrl || makeFallbackPortrait(`${p.name || 'hero'}-${p.role}-${index}`),
+    }));
+
+    setPlayers(finalizedPlayers);
+    onSubmit(finalizedPlayers);
   };
 
   return (
@@ -280,7 +283,7 @@ const CharacterCreation: React.FC<CharacterCreationProps> = ({ onSubmit, isLoadi
             <button
               type="submit"
               className="bg-amber-700 hover:bg-amber-800 text-white font-bold py-3 px-8 rounded-lg transition-all duration-200 shadow-md shadow-amber-700/20 disabled:bg-gray-600 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center mx-auto min-w-[200px] h-[50px]"
-              disabled={isLoading || players.some(p => !p.name.trim() || !p.backstory.trim() || !p.portraitUrl)}
+              disabled={isLoading || players.some(p => !p.name.trim() || !p.backstory.trim())}
             >
               {isLoading ? <LoadingSpinner /> : 'Begin Adventure'}
             </button>
