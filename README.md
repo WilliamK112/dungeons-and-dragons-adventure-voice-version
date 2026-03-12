@@ -189,8 +189,11 @@ flowchart LR
 
 - `backend/server.mjs` — Express API for server-side Gemini calls
 - `backend/Dockerfile` — Cloud Run container target
+- `backend/deploy-cloud-run.sh` — scripted Cloud Run deployment helper
 - `backend/README.md` — local run + Cloud Run deploy command
+- `scripts/setup-gcloud-mac.sh` — macOS gcloud bootstrap helper
 - `docs/submission-checklist.md` — judge evidence checklist
+- `docs/gcp-proof-checklist.md` — Cloud proof artifact checklist
 - `docs/live-adk-implementation-plan.md` — Live API/ADK implementation roadmap
 
 ## 🔐 Privacy
