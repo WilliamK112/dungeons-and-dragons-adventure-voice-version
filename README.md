@@ -137,40 +137,21 @@ npm run preview
 
 ---
 
-## 🙌 Credits
+## 🔐 Privacy
 
-Built by Ching-Wei Kang as an AI + game UX exploration project.
+This repository avoids publishing personal operational data. Keep your API keys in local env files only (`.env.local`) and never commit them.
 
-## Architecture Overview
+## 🌐 Deploy (Vercel)
 
-This project follows a modular structure with clear separation between interface, execution logic, and outputs/artifacts. The exact implementation details vary by repository, but the intent is to keep core logic testable and easy to extend.
+This app can be deployed as a Vite static site.
 
-
-## Project Structure
-
-```text
-.
-├─ src/            # Core source code (if present)
-├─ public/         # Static assets / UI resources (if present)
-├─ docs/           # Documentation and notes (if present)
-├─ scripts/        # Utility scripts (if present)
-├─ test/           # Tests (if present)
-└─ README.md       # Project overview
+```bash
+npm i -g vercel
+vercel --prod
 ```
 
-> Folder names vary by project; this section describes the intended organization pattern.
+Set environment variable in Vercel Project Settings:
 
-
-## Quick Start
-
-1. Clone the repository
-2. Install dependencies (if any)
-3. Run the project using its local start/build instructions
-
-If this repo is a library or static project, refer to scripts/config files for exact commands.
-
-
-## Current Scope
-
-This repository reflects the project’s current implementation and active direction. Planned improvements are tracked through issues/commits and may evolve over time.
+- `GEMINI_API_KEY` (preferred)
+- or `API_KEY`
 
