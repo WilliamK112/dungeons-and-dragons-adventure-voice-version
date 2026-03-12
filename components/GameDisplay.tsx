@@ -88,6 +88,7 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
         <div className="text-center mb-4">
             <h2 className="text-xl font-bold text-amber-300">It's <span className="text-amber-100">{currentPlayerName}'s</span> turn.</h2>
             <p className="text-amber-400/80">What do you do?</p>
+            <p className="text-xs text-amber-600/80 mt-1">Turn order is speed-based — higher agility acts more often.</p>
             {recentOutcome && (
               <p className="mt-2 text-sm text-emerald-300/90 italic">Consequence: {recentOutcome}</p>
             )}

@@ -9,6 +9,11 @@ import CoverPage from './components/CoverPage';
 import MusicPlayer from './components/MusicPlayer';
 import { motion, AnimatePresence } from 'motion/react';
 import { playChoiceClick, playFail, playInventoryGain, playLevelUp, playSuccess } from './utils/audioSfx';
+import {
+  getNextPlayerIndex,
+  initNextTurnAt,
+  advanceTurnAfterAction,
+} from './utils/turnOrder';
 
 type ApiKeyStatus = 'missing' | 'looks-valid' | 'looks-invalid';
 
@@ -43,6 +48,7 @@ const App: React.FC = () => {
 
   const [isApiKeySelected, setIsApiKeySelected] = useState<boolean>(false);
   const [apiKeyInput, setApiKeyInput] = useState<string>('');
+  const [playerNextTurnAt, setPlayerNextTurnAt] = useState<Record<string, number>>({});
 
   useEffect(() => {
     const checkApiKey = async () => {
@@ -186,6 +192,7 @@ const App: React.FC = () => {
       const sortedState = { ...initialState, players: playersWithPortraits, currentPlayerIndex: 0 };
       
       setGameState(sortedState as GameState);
+      setPlayerNextTurnAt(initNextTurnAt(playersWithPortraits));
       generateAndSetImage(initialState.sceneText, playersWithPortraits, 'The party begins their quest at the Sunken Citadel entrance.');
       setCurrentView('game');
     } catch (err) {
@@ -231,8 +238,15 @@ const App: React.FC = () => {
         }
       }
 
-      // Advance turn
-      const nextPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
+      // Advance turn: speed-based initiative (faster players can act multiple times before slower ones)
+      const actingPlayer = actingPlayerAfter ?? playersWithPortraits[gameState.currentPlayerIndex];
+      const updatedNextTurnAt = advanceTurnAfterAction(
+        playerNextTurnAt,
+        actingPlayer?.name ?? '',
+        actingPlayer?.stats?.agility ?? 50
+      );
+      setPlayerNextTurnAt(updatedNextTurnAt);
+      const nextPlayerIndex = getNextPlayerIndex(playersWithPortraits, updatedNextTurnAt);
       const finalState = { 
         ...nextState, 
         players: playersWithPortraits,
@@ -247,7 +261,7 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [gameState, isLoading, generateAndSetImage]);
+  }, [gameState, isLoading, generateAndSetImage, playerNextTurnAt]);
 
   const handleChoiceSelect = (choiceId: number) => {
     playChoiceClick();
