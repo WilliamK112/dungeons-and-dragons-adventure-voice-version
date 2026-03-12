@@ -32,13 +32,26 @@ const App: React.FC = () => {
   const [hasTriedCoverGeneration, setHasTriedCoverGeneration] = useState<boolean>(false);
 
   const [isApiKeySelected, setIsApiKeySelected] = useState<boolean>(false);
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
 
   useEffect(() => {
     const checkApiKey = async () => {
-      if (window.aistudio) {
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        setIsApiKeySelected(hasKey);
+      let hasKey = false;
+      try {
+        const localKey = window.localStorage.getItem('gemini_api_key') || '';
+        if (localKey.trim()) {
+          hasKey = true;
+          setApiKeyInput(localKey);
+        }
+      } catch {
+        // ignore localStorage failures
       }
+
+      if (!hasKey && window.aistudio) {
+        const selected = await window.aistudio.hasSelectedApiKey();
+        hasKey = selected;
+      }
+      setIsApiKeySelected(hasKey);
     };
     checkApiKey();
   }, []);
@@ -51,6 +64,22 @@ const App: React.FC = () => {
       if (!coverImageUrl && !isGeneratingCover) {
           setHasTriedCoverGeneration(false);
       }
+    }
+  };
+
+  const handleSaveApiKey = (key: string) => {
+    const cleaned = key.trim();
+    setApiKeyInput(cleaned);
+    if (!cleaned) return;
+    try {
+      window.localStorage.setItem('gemini_api_key', cleaned);
+    } catch {
+      // ignore storage errors
+    }
+    setIsApiKeySelected(true);
+    setError(null);
+    if (!coverImageUrl && !isGeneratingCover) {
+      setHasTriedCoverGeneration(false);
     }
   };
 
@@ -328,6 +357,8 @@ const App: React.FC = () => {
                     error={error} 
                     onConnectKey={handleOpenKeySelection}
                     isApiKeySelected={isApiKeySelected}
+                    apiKeyInput={apiKeyInput}
+                    onSaveApiKey={handleSaveApiKey}
                   />
               </motion.div>
             )}

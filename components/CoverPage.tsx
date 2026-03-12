@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import LoadingSpinner from './LoadingSpinner';
 import { motion } from 'motion/react';
 import { Shield, Sparkles, AlertCircle, ExternalLink } from 'lucide-react';
@@ -9,9 +9,17 @@ interface CoverPageProps {
   error: string | null;
   onConnectKey: () => void;
   isApiKeySelected: boolean;
+  apiKeyInput: string;
+  onSaveApiKey: (key: string) => void;
 }
 
-const CoverPage: React.FC<CoverPageProps> = ({ onStart, isLoading, error, onConnectKey, isApiKeySelected }) => {
+const CoverPage: React.FC<CoverPageProps> = ({ onStart, isLoading, error, onConnectKey, isApiKeySelected, apiKeyInput, onSaveApiKey }) => {
+  const [draftKey, setDraftKey] = useState(apiKeyInput || '');
+
+  useEffect(() => {
+    setDraftKey(apiKeyInput || '');
+  }, [apiKeyInput]);
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
@@ -47,8 +55,57 @@ const CoverPage: React.FC<CoverPageProps> = ({ onStart, isLoading, error, onConn
           </motion.div>
         )}
 
-        {!isLoading && !error && (
-            <div className="flex flex-col items-center gap-6">
+        {!isLoading && (
+            <div className="flex flex-col items-center gap-6 w-full max-w-xl">
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="w-full text-left bg-black/35 border border-amber-500/30 rounded-xl p-4 backdrop-blur-sm"
+                >
+                  <div className="flex items-center gap-2 mb-2 text-amber-200">
+                    <Shield className="w-4 h-4" />
+                    <p className="font-semibold">Enter your Gemini API key to unlock AI features</p>
+                  </div>
+                  <p className="text-amber-100/70 text-xs mb-3">
+                    Stored locally in your browser for this app. Never committed to GitHub.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      type="password"
+                      value={draftKey}
+                      onChange={(e) => setDraftKey(e.target.value)}
+                      placeholder="AIza..."
+                      className="flex-1 rounded-lg bg-zinc-900/80 border border-amber-400/30 px-3 py-2 text-sm text-amber-100 placeholder:text-amber-200/40 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+                    />
+                    <button
+                      onClick={() => onSaveApiKey(draftKey)}
+                      className="rounded-lg bg-amber-700 hover:bg-amber-600 px-4 py-2 text-sm font-semibold text-white"
+                    >
+                      Save Key
+                    </button>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+                    <a
+                      href="https://aistudio.google.com/app/apikey"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-amber-300 hover:text-amber-200 underline inline-flex items-center gap-1"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Get Gemini API key (Google AI Studio)
+                    </a>
+                    {!isApiKeySelected && (
+                      <button
+                        onClick={onConnectKey}
+                        className="text-amber-400/80 hover:text-amber-300 underline inline-flex items-center gap-1"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        Use AI Studio key selector
+                      </button>
+                    )}
+                  </div>
+                </motion.div>
+
                 <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
@@ -57,27 +114,7 @@ const CoverPage: React.FC<CoverPageProps> = ({ onStart, isLoading, error, onConn
                 >
                     Start the Game
                 </motion.button>
-                
-                {!isApiKeySelected && (
-                  <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 1 }}
-                    className="flex flex-col items-center gap-2"
-                  >
-                    <p className="text-amber-400/40 text-xs italic max-w-xs">
-                      Note: AI-generated images and videos require a paid API key. You can play with text-only for free.
-                    </p>
-                    <button
-                      onClick={onConnectKey}
-                      className="text-amber-500/60 hover:text-amber-400 text-xs underline flex items-center gap-1 transition-colors"
-                    >
-                      <Sparkles className="w-3 h-3" />
-                      Connect Paid Key for Visuals
-                    </button>
-                  </motion.div>
-                )}
-                
+
                 <motion.p 
                   animate={{ opacity: [0.4, 0.8, 0.4] }}
                   transition={{ repeat: Infinity, duration: 3 }}

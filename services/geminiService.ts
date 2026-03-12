@@ -2,11 +2,25 @@ import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { GameState, VideoPlan, Player } from '../types';
 import { GEMINI_MODEL, SYSTEM_INSTRUCTION, GAME_STATE_SCHEMA, VIDEO_PLAN_SCHEMA } from '../constants';
 
-// Fix: Initialize the GoogleGenAI client. Use the environment key by default.
+// Resolve API key from runtime input first, then env fallbacks.
+function getRuntimeApiKey(): string | null {
+    try {
+        if (typeof window !== 'undefined') {
+            const local = window.localStorage.getItem('gemini_api_key');
+            if (local && local.trim()) return local.trim();
+        }
+    } catch {
+        // ignore storage access errors
+    }
+
+    const envKey = (process.env.GEMINI_API_KEY || process.env.API_KEY || '').trim();
+    return envKey || null;
+}
+
 function getAI() {
-    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    const apiKey = getRuntimeApiKey();
     if (!apiKey) {
-        throw new Error("Gemini API key is missing. Please ensure GEMINI_API_KEY is set in the environment.");
+        throw new Error("Gemini API key is missing. Add it on the start screen before playing.");
     }
     return new GoogleGenAI({ apiKey });
 }
@@ -235,7 +249,7 @@ export const generateVideoFromScene = async (base64ImageDataUrl: string, scenePr
             throw new Error("Video generation operation completed but no download link was found.");
         }
 
-        const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+        const apiKey = getRuntimeApiKey() || '';
         const response = await fetch(downloadLink, {
             method: 'GET',
             headers: {
