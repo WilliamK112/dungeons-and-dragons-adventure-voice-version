@@ -42,9 +42,25 @@ const StatBar: React.FC<{ label: string; value: number; color: string; isProgres
 
 const DeadOverlay: React.FC = () => (
   <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-10">
-    <svg viewBox="0 0 100 100" className="w-full h-full" style={{ filter: 'drop-shadow(0 0 8px rgba(239,68,68,0.9))' }}>
-      <line x1="12" y1="12" x2="88" y2="88" stroke="#ef4444" strokeOpacity={0.72} strokeWidth="10" strokeLinecap="round" />
-      <line x1="88" y1="12" x2="12" y2="88" stroke="#ef4444" strokeOpacity={0.72} strokeWidth="10" strokeLinecap="round" />
+    <div className="absolute inset-0 bg-gradient-to-b from-red-950/25 via-black/10 to-red-950/35" />
+    <svg viewBox="0 0 100 100" className="w-full h-full" style={{ filter: 'drop-shadow(0 0 8px rgba(127,29,29,0.9))' }}>
+      {/* ancient ritual ring */}
+      <circle cx="50" cy="50" r="40" fill="none" stroke="#7f1d1d" strokeOpacity={0.45} strokeWidth="2.5" strokeDasharray="3 4" />
+      <circle cx="50" cy="50" r="34" fill="none" stroke="#991b1b" strokeOpacity={0.4} strokeWidth="1.5" />
+
+      {/* solemn rune-like cross */}
+      <line x1="20" y1="18" x2="80" y2="82" stroke="#b91c1c" strokeOpacity={0.7} strokeWidth="8" strokeLinecap="square" />
+      <line x1="80" y1="18" x2="20" y2="82" stroke="#b91c1c" strokeOpacity={0.7} strokeWidth="8" strokeLinecap="square" />
+
+      {/* engraved inner highlights */}
+      <line x1="24" y1="22" x2="76" y2="78" stroke="#fecaca" strokeOpacity={0.25} strokeWidth="1.8" strokeLinecap="square" />
+      <line x1="76" y1="22" x2="24" y2="78" stroke="#fecaca" strokeOpacity={0.25} strokeWidth="1.8" strokeLinecap="square" />
+
+      {/* corner rune marks */}
+      <path d="M14 14 L24 14 L24 18" stroke="#7f1d1d" strokeOpacity={0.75} strokeWidth="2" fill="none" />
+      <path d="M86 14 L76 14 L76 18" stroke="#7f1d1d" strokeOpacity={0.75} strokeWidth="2" fill="none" />
+      <path d="M14 86 L24 86 L24 82" stroke="#7f1d1d" strokeOpacity={0.75} strokeWidth="2" fill="none" />
+      <path d="M86 86 L76 86 L76 82" stroke="#7f1d1d" strokeOpacity={0.75} strokeWidth="2" fill="none" />
     </svg>
   </div>
 );
