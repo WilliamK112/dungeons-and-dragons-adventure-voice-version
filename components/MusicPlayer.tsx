@@ -9,7 +9,7 @@ const TRACKS = {
   tense: '/audio/tense-tourdion.ogg',
 };
 
-const MusicPlayer: React.FC<MusicPlayerProps> = ({ isTense = false }) => {
+const MusicPlayer: React.FC<MusicPlayerProps> = (_props) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(0.2);
@@ -17,7 +17,8 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ isTense = false }) => {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const activeTrack = isTense ? TRACKS.tense : TRACKS.calm;
+  // User request: keep tense BGM continuously during story for now.
+  const activeTrack = TRACKS.tense;
 
   useEffect(() => {
     try {
@@ -67,11 +68,15 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ isTense = false }) => {
     } catch {
       // ignore storage errors
     }
+  }, [volume, isPlaying, isMuted, activeTrack]);
 
+  useEffect(() => {
     return () => {
+      const audio = audioRef.current;
+      if (!audio) return;
       audio.pause();
     };
-  }, [volume, isPlaying, isMuted, activeTrack]);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -133,9 +138,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ isTense = false }) => {
         {isPlaying ? '⏸' : '▶'}
       </button>
 
-      {isTense && (
-        <span className="text-xs text-rose-300 bg-black/50 border border-rose-500/40 px-2 py-1 rounded-md">⚔️ Tense</span>
-      )}
+      <span className="text-xs text-rose-300 bg-black/50 border border-rose-500/40 px-2 py-1 rounded-md">⚔️ Tense</span>
     </div>
   );
 };
