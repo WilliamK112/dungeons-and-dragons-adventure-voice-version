@@ -10,10 +10,11 @@ interface CoverPageProps {
   onConnectKey: () => void;
   isApiKeySelected: boolean;
   apiKeyInput: string;
+  apiKeyStatus: 'missing' | 'looks-valid' | 'looks-invalid';
   onSaveApiKey: (key: string) => void;
 }
 
-const CoverPage: React.FC<CoverPageProps> = ({ onStart, isLoading, error, onConnectKey, isApiKeySelected, apiKeyInput, onSaveApiKey }) => {
+const CoverPage: React.FC<CoverPageProps> = ({ onStart, isLoading, error, onConnectKey, isApiKeySelected, apiKeyInput, apiKeyStatus, onSaveApiKey }) => {
   const [draftKey, setDraftKey] = useState(apiKeyInput || '');
 
   useEffect(() => {
@@ -83,6 +84,17 @@ const CoverPage: React.FC<CoverPageProps> = ({ onStart, isLoading, error, onConn
                     >
                       Save Key
                     </button>
+                  </div>
+                  <div className="mt-3 rounded-lg border border-amber-500/20 bg-zinc-950/40 px-3 py-2 text-xs text-left">
+                    {apiKeyStatus === 'missing' && (
+                      <p className="text-amber-200/80">🔑 Key status: Not set yet. Paste key and click <strong>Save Key</strong>.</p>
+                    )}
+                    {apiKeyStatus === 'looks-valid' && (
+                      <p className="text-emerald-300">✅ Key status: Looks valid. You can start your adventure.</p>
+                    )}
+                    {apiKeyStatus === 'looks-invalid' && (
+                      <p className="text-rose-300">⚠️ Key status: Format looks off. Gemini keys usually start with <strong>AIza</strong>.</p>
+                    )}
                   </div>
                   <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
                     <a

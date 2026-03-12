@@ -9,6 +9,15 @@ import CoverPage from './components/CoverPage';
 import MusicPlayer from './components/MusicPlayer';
 import { motion, AnimatePresence } from 'motion/react';
 
+type ApiKeyStatus = 'missing' | 'looks-valid' | 'looks-invalid';
+
+const getApiKeyStatus = (key: string, isSelected: boolean): ApiKeyStatus => {
+  if (!key.trim()) return 'missing';
+  const looksLikeGeminiKey = /^AIza[\w-]{20,}$/.test(key.trim());
+  if (looksLikeGeminiKey || isSelected) return 'looks-valid';
+  return 'looks-invalid';
+};
+
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -358,6 +367,7 @@ const App: React.FC = () => {
                     onConnectKey={handleOpenKeySelection}
                     isApiKeySelected={isApiKeySelected}
                     apiKeyInput={apiKeyInput}
+                    apiKeyStatus={getApiKeyStatus(apiKeyInput, isApiKeySelected)}
                     onSaveApiKey={handleSaveApiKey}
                   />
               </motion.div>
