@@ -137,6 +137,51 @@ npm run preview
 
 ---
 
+## 🏆 Gemini Live Agent Challenge Compliance (Creative Storyteller)
+
+Target track: **Creative Storyteller**
+
+### Requirement checklist
+
+- [x] Uses a **Gemini model** (`@google/genai`, text + image + video flows)
+- [x] Uses **Google GenAI SDK**
+- [ ] Uses **Gemini Live API or ADK** (planned next implementation step)
+- [ ] Backend hosted on **Google Cloud** (planned Cloud Run deployment)
+- [ ] Uses at least one explicit **Google Cloud service** in deployed architecture (planned: Cloud Run + Vertex AI/GenAI endpoint path)
+- [ ] Architecture diagram included for judges (draft added below, production version pending)
+- [ ] Reproducible spin-up instructions in README (present, being expanded for Cloud path)
+- [ ] <4 minute demo video showing real working multimodal features (in progress)
+- [ ] Cloud deployment proof artifact (in progress)
+
+### Current architecture (draft)
+
+```mermaid
+flowchart LR
+  U[Player in Browser] --> FE[React + Vite Frontend]
+  FE --> G[Gemini via Google GenAI SDK]
+  G --> FE
+  FE --> M[Image + Video Rendering in App]
+```
+
+### Planned competition-ready architecture
+
+```mermaid
+flowchart LR
+  U[Player in Browser] --> FE[Frontend: React/Vite]
+  FE --> BE[Backend API: Cloud Run]
+  BE --> GV[Gemini / Vertex AI APIs]
+  BE --> OBS[Cloud Logging]
+  BE --> ST[Cloud Storage (optional media/session assets)]
+  GV --> BE --> FE
+```
+
+### Judge-facing deliverables in progress
+
+1. Cloud Run backend migration for story/media orchestration
+2. Gemini Live/ADK integration path for real-time multimodal interaction
+3. Final architecture diagram image in `/docs/architecture.png`
+4. Dedicated submission checklist + proof links section
+
 ## 🔐 Privacy
 
 This repository avoids publishing personal operational data. Keep your API keys in local env files only (`.env.local`) and never commit them.
