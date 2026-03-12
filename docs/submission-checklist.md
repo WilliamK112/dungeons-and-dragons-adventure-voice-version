@@ -6,7 +6,7 @@ Track: **Creative Storyteller**
 
 - [x] Gemini model usage
 - [x] Google GenAI SDK usage
-- [ ] Gemini Live API or ADK usage (scaffold route added: `backend/server.mjs` `/api/live/session`)
+- [x] Gemini Live API usage (backend probe route: `POST /api/live/session` in `backend/server.mjs`)
 - [ ] Backend hosted on Google Cloud (Cloud Run)
 - [ ] At least one Google Cloud service demonstrated
 - [ ] Public repository with reproducible setup

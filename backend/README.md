@@ -6,6 +6,8 @@ This backend is the Google Cloud deployment path for Gemini Live Agent Challenge
 
 - `GET /health` — service health check
 - `POST /api/story/next` — server-side Gemini text generation
+- `POST /api/live/session` — Gemini Live API probe/session bootstrap (text modality test)
+- `GET /api/compliance/status` — challenge compliance status snapshot
 
 ## Local run
 
