@@ -6,6 +6,11 @@ import * as geminiService from '../services/geminiService';
 const ROLES = ['Warrior', 'Rogue', 'Mage', 'Cleric', 'Noble', 'Trickster', 'Balanced'];
 const MAX_PLAYERS = 8;
 
+const DEMO_PARTY: Array<{ name: string; role: string; backstory: string }> = [
+  { name: 'Kael Emberforge', role: 'Warrior', backstory: 'A scarred vanguard who swore to protect the weak after his clan fell to drakes.' },
+  { name: 'Lyra Nightwind', role: 'Rogue', backstory: 'A shadow-step scout who steals relics from tyrants and maps forgotten tunnels.' },
+  { name: 'Mira Starwell', role: 'Mage', backstory: 'An arcane prodigy chasing visions that point toward the Dragon\'s Eye.' },
+];
 
 const makeFallbackPortrait = (seed: string) => {
   const safeSeed = encodeURIComponent(seed || 'adventurer');
@@ -59,6 +64,20 @@ const CharacterCreation: React.FC<CharacterCreationProps> = ({ onSubmit, isLoadi
         }
         return newPlayers.slice(0, count);
     });
+  };
+
+  const applyDemoParty = () => {
+    const demoCount = DEMO_PARTY.length;
+    setPlayerCount(demoCount);
+    const demoPlayers: PlayerData[] = DEMO_PARTY.map((p, index) => ({
+      name: p.name,
+      role: p.role,
+      backstory: p.backstory,
+      portraitPrompt: `A ${p.role.toLowerCase()} with the following traits: ${p.backstory}`,
+      portraitUrl: makeFallbackPortrait(`${p.name}-${p.role}-${index}`),
+      isGeneratingPortrait: false,
+    }));
+    setPlayers(demoPlayers);
   };
 
   const handlePlayerChange = (index: number, field: keyof Omit<PlayerData, 'portraitUrl' | 'isGeneratingPortrait'>, value: string) => {
@@ -153,6 +172,14 @@ const CharacterCreation: React.FC<CharacterCreationProps> = ({ onSubmit, isLoadi
                   <option key={num} value={num}>{num}</option>
               ))}
             </select>
+            <button
+              type="button"
+              onClick={applyDemoParty}
+              disabled={isLoading}
+              className="mt-3 w-full bg-emerald-700 hover:bg-emerald-800 text-white font-semibold py-2 px-3 rounded-lg transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
+            >
+              Use Demo Party (Fast Start)
+            </button>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
