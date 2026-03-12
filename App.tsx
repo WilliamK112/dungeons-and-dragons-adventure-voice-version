@@ -142,15 +142,18 @@ const App: React.FC = () => {
         setSceneImageUrl(imageUrl);
     } catch (err) {
         console.error("Failed to generate scene image:", err);
-        setSceneImageUrl(null); // Clear image on error
+        const message = err instanceof Error ? err.message : '';
+        if (!/timed out/i.test(message)) {
+          setSceneImageUrl(null); // Clear image on non-timeout errors
+        }
     } finally {
         setIsGeneratingImage(false);
     }
   }, []);
 
-  const resetMedia = () => {
+  const resetMedia = (opts?: { keepImage?: boolean }) => {
     setSceneVideoUrl(null);
-    setSceneImageUrl(null);
+    if (!opts?.keepImage) setSceneImageUrl(null);
   };
 
   const handleStartGame = () => {
@@ -200,7 +203,7 @@ const App: React.FC = () => {
     try {
       setIsLoading(true);
       setError(null);
-      resetMedia();
+      resetMedia({ keepImage: true });
       const nextState = await getAction(gameState);
       
       // Preserve portrait URLs and descriptions from the old state, as the AI response won't contain them.

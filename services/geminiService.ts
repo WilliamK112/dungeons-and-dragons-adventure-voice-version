@@ -132,12 +132,34 @@ export const createCharacterAndStartGame = async (players: { name: string, role:
     return callGemini("CREATE_CHARACTER_AND_START_GAME", payload, GAME_STATE_SCHEMA);
 };
 
+const didStateActuallyChange = (before: GameState, after: GameState): boolean => {
+    const sameScene = (before.sceneText || '').trim() === (after.sceneText || '').trim();
+    const sameChoices = JSON.stringify(before.choices || []) === JSON.stringify(after.choices || []);
+    return !(sameScene && sameChoices);
+};
+
 export const resolveAction = async (currentState: GameState, choiceId: number | null, customActionText?: string): Promise<GameState> => {
     const choiceText = choiceId === null
         ? undefined
         : currentState.choices.find((c) => c.id === choiceId)?.text;
+
     const payload = { currentState, choiceId, choiceText, customActionText };
-    return callGemini("RESOLVE_ACTION", payload, GAME_STATE_SCHEMA);
+    let nextState = await callGemini("RESOLVE_ACTION", payload, GAME_STATE_SCHEMA);
+
+    // Reliability guard: if model returns effectively unchanged scene/options,
+    // force a second pass with explicit action text.
+    if (!didStateActuallyChange(currentState, nextState)) {
+        const fallbackAction = customActionText?.trim() || `I choose: ${choiceText || `option ${choiceId}`}`;
+        const retryPayload = {
+            currentState,
+            choiceId: null,
+            choiceText,
+            customActionText: fallbackAction,
+        };
+        nextState = await callGemini("RESOLVE_ACTION", retryPayload, GAME_STATE_SCHEMA);
+    }
+
+    return nextState;
 };
 
 export const generateVideoPlan = async (log: string[], duration_s: number): Promise<VideoPlan> => {
@@ -155,15 +177,20 @@ export const generateImage = async (scenePrompt: string, players: Player[], acti
         
         const fullPrompt = `${consistencyInstruction}\n\n[BEGIN CHARACTER DESCRIPTIONS]\n${characterDescriptions}\n[END CHARACTER DESCRIPTIONS]\n\n${actionLine}\nNow, create a high-quality, cinematic, digital painting in the style of Dungeons and Dragons fantasy art depicting the characters in the following scene: ${scenePrompt}`;
         
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image',
-            contents: { parts: [{ text: fullPrompt }] },
-            config: {
-                imageConfig: {
-                    aspectRatio: "16:9",
+        const response = await Promise.race([
+            ai.models.generateContent({
+                model: 'gemini-2.5-flash-image',
+                contents: { parts: [{ text: fullPrompt }] },
+                config: {
+                    imageConfig: {
+                        aspectRatio: "16:9",
+                    },
                 },
-            },
-        });
+            }),
+            new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('Scene image generation timed out. Keeping previous scene image.')), 20000)
+            )
+        ]);
 
         let imageUrl = '';
         for (const part of response.candidates[0].content.parts) {
