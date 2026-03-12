@@ -25,6 +25,11 @@ function getAI() {
     return new GoogleGenAI({ apiKey });
 }
 
+function getBackendBaseUrl(): string | null {
+    const raw = (process.env.VITE_BACKEND_URL || '').trim();
+    return raw ? raw.replace(/\/$/, '') : null;
+}
+
 /**
  * Parses an error from the Gemini API and returns a user-friendly message.
  */
@@ -55,8 +60,29 @@ function parseGeminiError(e: unknown): string {
 
 async function callGemini(command: string, payload: any, schema: any): Promise<any> {
     try {
+        const backendBaseUrl = getBackendBaseUrl();
+        if (backendBaseUrl) {
+            const response = await fetch(`${backendBaseUrl}/api/game/command`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    command,
+                    payload,
+                    schema,
+                    systemInstruction: SYSTEM_INSTRUCTION,
+                    model: GEMINI_MODEL,
+                }),
+            });
+
+            const data = await response.json();
+            if (!response.ok || !data?.ok) {
+                throw new Error(data?.error || `Backend call failed with ${response.status}`);
+            }
+            return data.data;
+        }
+
         const ai = getAI();
-        const response: GenerateContentResponse = await ai.models.generateContent({
+        const llmResponse: GenerateContentResponse = await ai.models.generateContent({
             model: GEMINI_MODEL,
             contents: JSON.stringify({ command, payload }),
             config: {
@@ -66,7 +92,7 @@ async function callGemini(command: string, payload: any, schema: any): Promise<a
             }
         });
 
-        const text = response.text;
+        const text = llmResponse.text;
         if (!text) {
              throw new Error("Received an empty response from the AI.");
         }

@@ -63,6 +63,8 @@ Create or edit `.env.local`:
 
 ```bash
 GEMINI_API_KEY=your_key_here
+# Optional: route story-state generation through Cloud Run backend
+VITE_BACKEND_URL=https://your-cloud-run-service-url
 ```
 
 > You can also use `API_KEY`, but `GEMINI_API_KEY` is preferred.

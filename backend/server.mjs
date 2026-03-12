@@ -44,6 +44,52 @@ app.post('/api/story/next', async (req, res) => {
   }
 });
 
+app.post('/api/game/command', async (req, res) => {
+  try {
+    const {
+      command,
+      payload,
+      schema,
+      systemInstruction,
+      model = 'gemini-2.5-flash',
+    } = req.body || {};
+
+    if (!command || typeof command !== 'string') {
+      return res.status(400).json({ ok: false, error: 'Missing command (string)' });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ ok: false, error: 'Server missing GEMINI_API_KEY/API_KEY' });
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model,
+      contents: JSON.stringify({ command, payload }),
+      config: {
+        ...(systemInstruction ? { systemInstruction } : {}),
+        ...(schema
+          ? {
+              responseMimeType: 'application/json',
+              responseSchema: schema,
+            }
+          : {}),
+      },
+    });
+
+    const text = (response.text || '').trim().replace(/^```json\s*|```\s*$/g, '');
+    const data = text ? JSON.parse(text) : null;
+
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return res.status(500).json({
+      ok: false,
+      error: error instanceof Error ? error.message : 'Unknown server error',
+    });
+  }
+});
+
 // Live API/ADK readiness endpoint for hackathon compliance tracking.
 // This is a scaffold endpoint; wire real Live session creation/token exchange next.
 app.post('/api/live/session', async (_req, res) => {
