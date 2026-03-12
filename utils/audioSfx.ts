@@ -1,4 +1,5 @@
 let ctx: AudioContext | null = null;
+let deathAudio: HTMLAudioElement | null = null;
 
 function getCtx(): AudioContext | null {
   if (typeof window === 'undefined') return null;
@@ -49,3 +50,27 @@ export function playLevelUp() {
   tone(523, 90, 'triangle', 0.03, 70);
   tone(784, 120, 'triangle', 0.03, 140);
 }
+
+export function playDeathSfx() {
+  if (typeof window === 'undefined') return;
+  if (!deathAudio) {
+    deathAudio = new Audio('/audio/death-funeral-march.ogg');
+    deathAudio.preload = 'auto';
+  }
+  try {
+    deathAudio.currentTime = 0;
+    deathAudio.volume = 0.45;
+    deathAudio.play().catch(() => {
+      // ignore autoplay/interaction failures
+    });
+    window.setTimeout(() => {
+      if (!deathAudio) return;
+      deathAudio.pause();
+      deathAudio.currentTime = 0;
+    }, 2600);
+  } catch {
+    // ignore audio errors
+  }
+}
+
+export const playDeath = playDeathSfx;

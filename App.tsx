@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GameState, VideoPlan, Player } from './types';
 import * as geminiService from './services/geminiService';
 import PlayerStatsList from './components/PlayerStats';
@@ -8,12 +8,15 @@ import CharacterCreation, { PlayerData } from './components/CharacterCreation';
 import CoverPage from './components/CoverPage';
 import MusicPlayer from './components/MusicPlayer';
 import { motion, AnimatePresence } from 'motion/react';
-import { playChoiceClick, playFail, playInventoryGain, playLevelUp, playSuccess } from './utils/audioSfx';
+import { playChoiceClick, playFail, playInventoryGain, playLevelUp, playSuccess, playDeath } from './utils/audioSfx';
 import {
   getNextPlayerIndex,
   initNextTurnAt,
   advanceTurnAfterAction,
+  getInitiativeQueue,
+  isDead,
 } from './utils/turnOrder';
+import InitiativeQueue from './components/InitiativeQueue';
 
 type ApiKeyStatus = 'missing' | 'looks-valid' | 'looks-invalid';
 
@@ -204,8 +207,22 @@ const App: React.FC = () => {
     }
   }, [generateAndSetImage]);
 
+  // Dead players never take turns. If current player is dead, auto-skip to next living player.
+  useEffect(() => {
+    if (!gameState || !gameState.players.length) return;
+    const current = gameState.players[gameState.currentPlayerIndex];
+    if (!current || !isDead(current)) return;
+
+    const nextIndex = getNextPlayerIndex(gameState.players, playerNextTurnAt);
+    if (nextIndex !== gameState.currentPlayerIndex && !isDead(gameState.players[nextIndex])) {
+      setGameState({ ...gameState, currentPlayerIndex: nextIndex });
+    }
+  }, [gameState, playerNextTurnAt]);
+
   const handleAction = useCallback(async (getAction: (gs: GameState) => Promise<GameState>, actionContext: string) => {
     if (!gameState || isLoading) return;
+    const acting = gameState.players[gameState.currentPlayerIndex];
+    if (!acting || isDead(acting)) return;
 
     try {
       setIsLoading(true);
@@ -231,7 +248,9 @@ const App: React.FC = () => {
         const afterStats = actingPlayerAfter.stats;
         if (afterStats.inventory.length > beforeStats.inventory.length) playInventoryGain();
         if (Math.floor(beforeStats.xp / 100) < Math.floor(afterStats.xp / 100)) playLevelUp();
-        if (afterStats.health < beforeStats.health) {
+        if (afterStats.health <= 0 && beforeStats.health > 0) {
+          playDeath();
+        } else if (afterStats.health < beforeStats.health) {
           playFail();
         } else if (afterStats.xp > beforeStats.xp || afterStats.health > beforeStats.health) {
           playSuccess();
@@ -320,8 +339,27 @@ const App: React.FC = () => {
       return null;
     }
 
+    if (isDead(currentPlayer)) {
+      return (
+        <div className="text-center py-10 text-amber-200">
+          <p className="mb-2">{currentPlayer.name} is dead and cannot act.</p>
+          <p className="text-sm text-amber-400/80">Only resurrection can bring them back into turn order.</p>
+          <PlayerStatsList players={gameState.players} currentPlayerIndex={gameState.currentPlayerIndex} />
+        </div>
+      );
+    }
+
+    const initiativeQueue = getInitiativeQueue(
+      gameState.players,
+      playerNextTurnAt,
+      gameState.currentPlayerIndex
+    );
+
     return (
       <>
+        <div className="mb-6 w-full">
+          <InitiativeQueue queue={initiativeQueue} />
+        </div>
         <div className="flex flex-col lg:flex-row gap-8">
           <GameDisplay 
             sceneText={gameState.sceneText} 
