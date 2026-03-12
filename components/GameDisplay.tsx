@@ -15,6 +15,7 @@ interface GameDisplayProps {
   onGenerateVideo: () => void;
   onCustomActionSubmit: (customAction: string) => void;
   currentPlayerName: string;
+  recentOutcome?: string;
 }
 
 const GameDisplay: React.FC<GameDisplayProps> = ({ 
@@ -28,7 +29,8 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
     isGeneratingVideoScene,
     onGenerateVideo,
     onCustomActionSubmit,
-    currentPlayerName
+    currentPlayerName,
+    recentOutcome
 }) => {
   const showVideoButton = !isGeneratingImage && !isGeneratingVideoScene && sceneImageUrl && !sceneVideoUrl;
   const [customAction, setCustomAction] = useState('');
@@ -86,6 +88,9 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
         <div className="text-center mb-4">
             <h2 className="text-xl font-bold text-amber-300">It's <span className="text-amber-100">{currentPlayerName}'s</span> turn.</h2>
             <p className="text-amber-400/80">What do you do?</p>
+            {recentOutcome && (
+              <p className="mt-2 text-sm text-emerald-300/90 italic">Consequence: {recentOutcome}</p>
+            )}
         </div>
         {isLoading ? (
           <p className="text-amber-400 italic text-center">The Dungeon Master is pondering your fate...</p>

@@ -8,6 +8,7 @@ import CharacterCreation, { PlayerData } from './components/CharacterCreation';
 import CoverPage from './components/CoverPage';
 import MusicPlayer from './components/MusicPlayer';
 import { motion, AnimatePresence } from 'motion/react';
+import { playChoiceClick, playFail, playInventoryGain, playLevelUp, playSuccess } from './utils/audioSfx';
 
 type ApiKeyStatus = 'missing' | 'looks-valid' | 'looks-invalid';
 
@@ -212,6 +213,21 @@ const App: React.FC = () => {
         };
       });
 
+      const actingPlayerBefore = gameState.players[gameState.currentPlayerIndex];
+      const actingPlayerAfter = playersWithPortraits.find((p) => p.name === actingPlayerBefore?.name);
+
+      if (actingPlayerBefore && actingPlayerAfter) {
+        const beforeStats = actingPlayerBefore.stats;
+        const afterStats = actingPlayerAfter.stats;
+        if (afterStats.inventory.length > beforeStats.inventory.length) playInventoryGain();
+        if (Math.floor(beforeStats.xp / 100) < Math.floor(afterStats.xp / 100)) playLevelUp();
+        if (afterStats.health < beforeStats.health) {
+          playFail();
+        } else if (afterStats.xp > beforeStats.xp || afterStats.health > beforeStats.health) {
+          playSuccess();
+        }
+      }
+
       // Advance turn
       const nextPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
       const finalState = { 
@@ -231,11 +247,13 @@ const App: React.FC = () => {
   }, [gameState, isLoading, generateAndSetImage]);
 
   const handleChoiceSelect = (choiceId: number) => {
+    playChoiceClick();
     const choiceText = gameState?.choices.find((c) => c.id === choiceId)?.text || `Choice ${choiceId}`;
     handleAction((gs) => geminiService.resolveAction(gs, choiceId), choiceText);
   };
   
   const handleCustomActionSubmit = (customActionText: string) => {
+    playChoiceClick();
     handleAction((gs) => geminiService.resolveAction(gs, null, customActionText), customActionText);
   };
 
@@ -300,6 +318,7 @@ const App: React.FC = () => {
             onGenerateVideo={handleGenerateVideo}
             onCustomActionSubmit={handleCustomActionSubmit}
             currentPlayerName={currentPlayer.name}
+            recentOutcome={recentOutcome}
           />
           <PlayerStatsList players={gameState.players} currentPlayerIndex={gameState.currentPlayerIndex} />
         </div>
@@ -334,9 +353,12 @@ const App: React.FC = () => {
     backgroundColor: '#020617', // Fallback
   };
 
+  const recentOutcome = gameState?.log?.[gameState.log.length - 1] || '';
+  const isTenseScene = /dragon|ambush|trap|blood|curse|dark|shadow|battle|danger|attack|scream/i.test(gameState?.sceneText || '');
+
   return (
     <div className="relative min-h-screen p-4 sm:p-8 bg-cover bg-center transition-all duration-1000" style={appStyle}>
-      <MusicPlayer />
+      <MusicPlayer isTense={isTenseScene} />
       <div 
         className={`absolute inset-0 bg-black transition-opacity duration-1000 ${currentView === 'cover' && coverImageUrl ? 'opacity-60' : 'opacity-0'}`} 
         style={{ pointerEvents: 'none' }}
