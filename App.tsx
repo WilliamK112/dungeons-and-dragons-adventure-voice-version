@@ -134,10 +134,10 @@ const App: React.FC = () => {
   }, [currentView]);
 
 
-  const generateAndSetImage = useCallback(async (prompt: string, players: Player[]) => {
+  const generateAndSetImage = useCallback(async (prompt: string, players: Player[], actionContext?: string) => {
     setIsGeneratingImage(true);
     try {
-        const imageUrl = await geminiService.generateImage(prompt, players);
+        const imageUrl = await geminiService.generateImage(prompt, players, actionContext);
         setSceneImageUrl(imageUrl);
     } catch (err) {
         console.error("Failed to generate scene image:", err);
@@ -182,7 +182,7 @@ const App: React.FC = () => {
       const sortedState = { ...initialState, players: playersWithPortraits, currentPlayerIndex: 0 };
       
       setGameState(sortedState as GameState);
-      generateAndSetImage(initialState.sceneText, playersWithPortraits);
+      generateAndSetImage(initialState.sceneText, playersWithPortraits, 'The party begins their quest at the Sunken Citadel entrance.');
       setCurrentView('game');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
@@ -193,7 +193,7 @@ const App: React.FC = () => {
     }
   }, [generateAndSetImage]);
 
-  const handleAction = useCallback(async (getAction: (gs: GameState) => Promise<GameState>) => {
+  const handleAction = useCallback(async (getAction: (gs: GameState) => Promise<GameState>, actionContext: string) => {
     if (!gameState || isLoading) return;
 
     try {
@@ -221,7 +221,7 @@ const App: React.FC = () => {
       };
       setGameState(finalState);
 
-      generateAndSetImage(finalState.sceneText, finalState.players);
+      generateAndSetImage(finalState.sceneText, finalState.players, actionContext);
     } catch (err) {
       setError('An error occurred while resolving the action. Please try again.');
       console.error(err);
@@ -231,11 +231,12 @@ const App: React.FC = () => {
   }, [gameState, isLoading, generateAndSetImage]);
 
   const handleChoiceSelect = (choiceId: number) => {
-    handleAction((gs) => geminiService.resolveAction(gs, choiceId));
+    const choiceText = gameState?.choices.find((c) => c.id === choiceId)?.text || `Choice ${choiceId}`;
+    handleAction((gs) => geminiService.resolveAction(gs, choiceId), choiceText);
   };
   
   const handleCustomActionSubmit = (customActionText: string) => {
-    handleAction((gs) => geminiService.resolveAction(gs, null, customActionText));
+    handleAction((gs) => geminiService.resolveAction(gs, null, customActionText), customActionText);
   };
 
 

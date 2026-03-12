@@ -124,14 +124,15 @@ export const generateVideoPlan = async (log: string[], duration_s: number): Prom
     return callGemini("GENERATE_VIDEO_PLAN", payload, VIDEO_PLAN_SCHEMA);
 };
 
-export const generateImage = async (scenePrompt: string, players: Player[]): Promise<string> => {
+export const generateImage = async (scenePrompt: string, players: Player[], actionContext?: string): Promise<string> => {
     try {
         const ai = getAI();
         const consistencyInstruction = "Always render each player character with consistent appearance across all generated images. The character’s core traits (face, hairstyle, outfit, colors, accessories, equipment) must remain exactly the same in every scene. Do not alter or reinvent their design unless the user explicitly updates their character description. Only vary the background, environment, and pose depending on the current scene or action. Maintain a consistent dark fantasy art style throughout.";
         
         const characterDescriptions = players.map(p => `Character Name: '${p.name}'. Full Description: '${p.description}'`).join('\n');
+        const actionLine = actionContext ? `The image MUST clearly depict this chosen action and its consequence: ${actionContext}.` : '';
         
-        const fullPrompt = `${consistencyInstruction}\n\n[BEGIN CHARACTER DESCRIPTIONS]\n${characterDescriptions}\n[END CHARACTER DESCRIPTIONS]\n\nNow, create a high-quality, cinematic, digital painting in the style of Dungeons and Dragons fantasy art depicting the characters in the following scene: ${scenePrompt}`;
+        const fullPrompt = `${consistencyInstruction}\n\n[BEGIN CHARACTER DESCRIPTIONS]\n${characterDescriptions}\n[END CHARACTER DESCRIPTIONS]\n\n${actionLine}\nNow, create a high-quality, cinematic, digital painting in the style of Dungeons and Dragons fantasy art depicting the characters in the following scene: ${scenePrompt}`;
         
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',

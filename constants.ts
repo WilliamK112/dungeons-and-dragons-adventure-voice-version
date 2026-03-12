@@ -34,6 +34,7 @@ STAT DESCRIPTIONS:
 GAME MECHANICS:
 - Every choice must meaningfully impact stats, inventory, flags, or future choices.
 - Choices must be 3-5 specific, distinct options.
+- Story branches should be surprising, high-stakes, and fun (mystery, danger, reward, twists).
 - The players' goal is to explore the Sunken Citadel and retrieve the Dragon's Eye.
 
 ACTION HANDLING:
@@ -66,6 +67,8 @@ You will receive a request object: { command: string, payload: any }.
    - If 'customActionText' is NOT provided, use BOTH 'choiceId' and 'choiceText' (if present) to determine the outcome.
    - CRITICAL: Different choices must produce meaningfully different consequences. Do NOT return near-identical scene outcomes for different choice ids.
    - The first 1-2 sentences of the new scene MUST explicitly reflect the chosen action and immediate consequence.
+   - Make the scene vivid and interesting with concrete sensory details, tension, and a clear immediate objective.
+   - Ensure narrative continuity: the acting player's class/backstory/stats should influence outcomes and flavor.
    - Generate the next scene, choices, and updated player stats for the acting player.
    - Append a concise, one-sentence summary of the action and outcome to the \`currentState.log\`.
    - Return the complete, updated state object, including the full \`players\` array. The client will handle advancing the turn.
