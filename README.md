@@ -182,6 +182,13 @@ flowchart LR
 3. Final architecture diagram image in `/docs/architecture.png`
 4. Dedicated submission checklist + proof links section
 
+### New cloud backend scaffold (added)
+
+- `backend/server.mjs` — Express API for server-side Gemini calls
+- `backend/Dockerfile` — Cloud Run container target
+- `backend/README.md` — local run + Cloud Run deploy command
+- `docs/submission-checklist.md` — judge evidence checklist
+
 ## 🔐 Privacy
 
 This repository avoids publishing personal operational data. Keep your API keys in local env files only (`.env.local`) and never commit them.
