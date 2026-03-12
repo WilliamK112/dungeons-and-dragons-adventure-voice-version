@@ -34,7 +34,7 @@ STAT DESCRIPTIONS:
 GAME MECHANICS:
 - Every choice must meaningfully impact stats, inventory, flags, or future choices.
 - Choices must be 3-5 specific, distinct options.
-- ACTION ECONOMY FORMAT: Prefix each choice with an action type tag: `[Action]`, `[Move]`, `[Bonus]`, or `[Reaction]` when appropriate.
+- ACTION ECONOMY FORMAT: Prefix each choice with an action type tag: [Action], [Move], [Bonus], or [Reaction] when appropriate.
 - Story branches should be surprising, high-stakes, and fun (mystery, danger, reward, twists).
 - The players' goal is to explore the Sunken Citadel and retrieve the Dragon's Eye.
 - Dead players (health <= 0) cannot take normal actions until revived.

@@ -10,6 +10,7 @@ type State = {
 };
 
 class ErrorBoundary extends React.Component<Props, State> {
+  declare props: Props;
   state: State = { hasError: false };
 
   static getDerivedStateFromError(error: unknown): State {
