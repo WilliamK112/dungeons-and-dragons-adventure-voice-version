@@ -1,6 +1,6 @@
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
-import { GameState, VideoPlan, Player } from '../types';
-import { GEMINI_MODEL, SYSTEM_INSTRUCTION, GAME_STATE_SCHEMA, VIDEO_PLAN_SCHEMA } from '../constants';
+import { GameState, VideoPlan, Player, PlanningResponse } from '../types';
+import { GEMINI_MODEL, SYSTEM_INSTRUCTION, GAME_STATE_SCHEMA, VIDEO_PLAN_SCHEMA, PLANNING_SCHEMA } from '../constants';
 
 // Resolve API key from runtime input first, then env fallbacks.
 function getRuntimeApiKey(): string | null {
@@ -127,9 +127,18 @@ async function callGemini(command: string, payload: any, schema: any): Promise<a
     }
 }
 
+const normalizeGameState = (state: GameState): GameState => ({
+    ...state,
+    objective: state.objective || 'Retrieve the Dragon\'s Eye from the Sunken Citadel.',
+    threatLevel: typeof state.threatLevel === 'number' ? state.threatLevel : 2,
+    unresolvedHooks: state.unresolvedHooks || [],
+    queuedConsequences: state.queuedConsequences || [],
+});
+
 export const createCharacterAndStartGame = async (players: { name: string, role: string, backstory: string }[]): Promise<GameState> => {
     const payload = { players };
-    return callGemini("CREATE_CHARACTER_AND_START_GAME", payload, GAME_STATE_SCHEMA);
+    const state = await callGemini("CREATE_CHARACTER_AND_START_GAME", payload, GAME_STATE_SCHEMA);
+    return normalizeGameState(state);
 };
 
 const didStateActuallyChange = (before: GameState, after: GameState): boolean => {
@@ -205,7 +214,16 @@ export const resolveAction = async (
         };
     }
 
-    return nextState;
+    return normalizeGameState(nextState);
+};
+
+export const planAction = async (currentState: GameState, actingPlayerName?: string): Promise<PlanningResponse> => {
+    const payload = { currentState: toModelState(currentState), actingPlayerName };
+    const plan = await callGemini("PLAN_ACTION", payload, PLANNING_SCHEMA);
+    return {
+        brief: plan.brief || 'Assess the battlefield and choose a decisive move.',
+        tacticalOptions: Array.isArray(plan.tacticalOptions) ? plan.tacticalOptions.slice(0, 4) : [],
+    };
 };
 
 export const generateVideoPlan = async (log: string[], duration_s: number): Promise<VideoPlan> => {
@@ -216,12 +234,22 @@ export const generateVideoPlan = async (log: string[], duration_s: number): Prom
 export const generateImage = async (scenePrompt: string, players: Player[], actionContext?: string): Promise<string> => {
     try {
         const ai = getAI();
-        const consistencyInstruction = "Always render each player character with consistent appearance across all generated images. The character’s core traits (face, hairstyle, outfit, colors, accessories, equipment) must remain exactly the same in every scene. Do not alter or reinvent their design unless the user explicitly updates their character description. Only vary the background, environment, and pose depending on the current scene or action. Maintain a consistent dark fantasy art style throughout.";
+        const consistencyInstruction = `You are generating scene art for an ongoing campaign.
+Character continuity is STRICT and mandatory:
+- Keep each character's face identity, hair, skin tone, outfit silhouette/colors, accessories, and signature weapon consistent across scenes.
+- Never merge, swap, or blend two characters' visual identities.
+- Keep class fantasy readable (warrior looks martial, rogue agile/stealthy, mage arcane).
+- Preserve the same dark fantasy painterly style each time.
+- If details are ambiguous, prefer previous character descriptions rather than inventing new features.`;
         
-        const characterDescriptions = players.map(p => `Character Name: '${p.name}'. Full Description: '${p.description}'`).join('\n');
-        const actionLine = actionContext ? `The image MUST clearly depict this chosen action and its consequence: ${actionContext}.` : '';
+        const characterDescriptions = players
+            .map((p, i) => `#${i + 1} ${p.name}\nLocked Appearance Notes: ${(p.description || '').slice(0, 320)}`)
+            .join('\n\n');
+        const actionLine = actionContext
+            ? `The image MUST clearly depict this chosen action and its immediate consequence: ${actionContext}.`
+            : '';
         
-        const fullPrompt = `${consistencyInstruction}\n\n[BEGIN CHARACTER DESCRIPTIONS]\n${characterDescriptions}\n[END CHARACTER DESCRIPTIONS]\n\n${actionLine}\nNow, create a high-quality, cinematic, digital painting in the style of Dungeons and Dragons fantasy art depicting the characters in the following scene: ${scenePrompt}`;
+        const fullPrompt = `${consistencyInstruction}\n\n[CHARACTER CONTINUITY SHEET]\n${characterDescriptions}\n[/CHARACTER CONTINUITY SHEET]\n\n${actionLine}\nScene to depict: ${scenePrompt}\n\nOutput: one cinematic 16:9 frame, visually consistent with prior party portraits.`;
         
         const response = await Promise.race([
             ai.models.generateContent({

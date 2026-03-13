@@ -28,6 +28,25 @@ export interface Flag {
   value: boolean;
 }
 
+export interface TacticalOption {
+  id: string;
+  title: string;
+  approach: string;
+  successChance: 'Low' | 'Medium' | 'High';
+  upside: string;
+  immediateRisk: string;
+  futureRisk: string;
+  resourceCost: string;
+}
+
+export interface QueuedConsequence {
+  id: string;
+  etaTurns: number;
+  title: string;
+  impact: string;
+  severity: number;
+}
+
 export interface GameState {
   sceneText: string;
   choices: Choice[];
@@ -35,6 +54,15 @@ export interface GameState {
   currentPlayerIndex: number;
   flags: Flag[];
   log: string[];
+  objective?: string;
+  threatLevel?: number;
+  unresolvedHooks?: string[];
+  queuedConsequences?: QueuedConsequence[];
+}
+
+export interface PlanningResponse {
+  brief: string;
+  tacticalOptions: TacticalOption[];
 }
 
 export interface Shot {

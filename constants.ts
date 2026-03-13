@@ -97,7 +97,15 @@ You will receive a request object: { command: string, payload: any }.
    - Return the complete, updated state object, including the full \`players\` array. The client will handle advancing the turn.
    - The response must be a GameState object.
 
-3. IF command is "GENERATE_VIDEO_PLAN":
+3. IF command is "PLAN_ACTION":
+   - The payload will be { currentState: GameState, actingPlayerName?: string }.
+   - Return a planning object with:
+     - brief: 2-4 sentences summarizing current tactical situation, primary objective, and biggest threat.
+     - tacticalOptions: 3-4 options. Each option MUST include:
+       id, title, approach, successChance (Low|Medium|High), upside, immediateRisk, futureRisk, resourceCost.
+   - Keep options distinct (stealth/social/combat/magic/utility), practical, and specific to the current scene.
+
+4. IF command is "GENERATE_VIDEO_PLAN":
    - The payload will be { log: string[], duration_s: number }.
    - Return a \`VideoPlan\` object, NOT a \`GameState\` object.
    - The plan must adhere to these rules:
@@ -172,9 +180,51 @@ export const GAME_STATE_SCHEMA = {
                 required: ["key", "value"]
             }
         },
-        log: { type: Type.ARRAY, items: { type: Type.STRING } }
+        log: { type: Type.ARRAY, items: { type: Type.STRING } },
+        objective: { type: Type.STRING },
+        threatLevel: { type: Type.INTEGER },
+        unresolvedHooks: { type: Type.ARRAY, items: { type: Type.STRING } },
+        queuedConsequences: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    id: { type: Type.STRING },
+                    etaTurns: { type: Type.INTEGER },
+                    title: { type: Type.STRING },
+                    impact: { type: Type.STRING },
+                    severity: { type: Type.INTEGER }
+                },
+                required: ["id", "etaTurns", "title", "impact", "severity"]
+            }
+        }
     },
     required: ["sceneText", "choices", "players", "currentPlayerIndex", "flags", "log"]
+};
+
+export const PLANNING_SCHEMA = {
+    type: Type.OBJECT,
+    properties: {
+        brief: { type: Type.STRING },
+        tacticalOptions: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    id: { type: Type.STRING },
+                    title: { type: Type.STRING },
+                    approach: { type: Type.STRING },
+                    successChance: { type: Type.STRING },
+                    upside: { type: Type.STRING },
+                    immediateRisk: { type: Type.STRING },
+                    futureRisk: { type: Type.STRING },
+                    resourceCost: { type: Type.STRING }
+                },
+                required: ["id", "title", "approach", "successChance", "upside", "immediateRisk", "futureRisk", "resourceCost"]
+            }
+        }
+    },
+    required: ["brief", "tacticalOptions"]
 };
 
 export const VIDEO_PLAN_SCHEMA = {

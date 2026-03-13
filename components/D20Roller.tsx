@@ -1,4 +1,7 @@
-import React from 'react';
+import React, { Suspense } from 'react';
+import { Canvas } from '@react-three/fiber';
+import { motion } from 'motion/react';
+import D20Mesh from './D20Scene';
 
 interface D20RollerProps {
   value: number | null;
@@ -6,6 +9,25 @@ interface D20RollerProps {
   currentPlayerName?: string;
   previousForCurrent?: number | null;
 }
+
+/** 骰子停止且出结果时，数字变金黄色 */
+const RollNumber: React.FC<{ value: number | null; isRolling: boolean }> = ({ value, isRolling }) => {
+  const settled = !isRolling && value != null;
+  return (
+    <motion.span
+      className="absolute inset-0 z-10 flex items-center justify-center font-bold text-xl pointer-events-none select-none"
+      style={{ textShadow: '0 0 12px currentColor' }}
+      animate={{
+        color: settled ? '#fbbf24' : 'rgb(165 243 252)',
+        scale: settled ? 1.1 : 1,
+        y: -2,
+      }}
+      transition={{ duration: 0.4, ease: 'easeOut' }}
+    >
+      {isRolling ? '…' : (value ?? '-')}
+    </motion.span>
+  );
+};
 
 const D20Roller: React.FC<D20RollerProps> = ({ value, isRolling, currentPlayerName, previousForCurrent }) => {
   return (
@@ -20,16 +42,20 @@ const D20Roller: React.FC<D20RollerProps> = ({ value, isRolling, currentPlayerNa
             </p>
           )}
         </div>
-        <div className={`relative w-16 h-16 flex items-center justify-center ${isRolling ? 'animate-pulse' : ''}`}>
-          <div className="absolute inset-0" style={{
-            clipPath: 'polygon(50% 2%, 95% 28%, 95% 72%, 50% 98%, 5% 72%, 5% 28%)',
-            background: 'linear-gradient(135deg,#0f172a,#1e293b)',
-            border: '2px solid rgba(34,211,238,0.65)',
-            boxShadow: '0 0 14px rgba(34,211,238,0.35)',
-          }} />
-          <span className="relative z-10 text-cyan-200 font-bold text-xl">
-            {isRolling ? '…' : (value ?? '-')}
-          </span>
+        <div className="relative w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden bg-slate-950/90 border border-cyan-500/40 shadow-[0_0_20px_rgba(34,211,238,0.2)]">
+          <Suspense fallback={<div className="w-full h-full flex items-center justify-center text-cyan-300">…</div>}>
+            <Canvas
+              camera={{ position: [0, 0, 4], fov: 45 }}
+              gl={{ alpha: true, antialias: true }}
+              dpr={[1, 2]}
+            >
+              <ambientLight intensity={0.6} />
+              <directionalLight position={[3, 4, 5]} intensity={1.2} />
+              <pointLight position={[-2, -1, 2]} color="#22d3ee" intensity={0.8} />
+              <D20Mesh isRolling={isRolling} value={value} />
+            </Canvas>
+          </Suspense>
+          <RollNumber value={value} isRolling={isRolling} />
         </div>
       </div>
     </div>

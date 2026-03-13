@@ -1,6 +1,6 @@
 
 import React, { useState, FormEvent } from 'react';
-import { Choice } from '../types';
+import { Choice, PlanningResponse, QueuedConsequence } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import D20Roller from './D20Roller';
 
@@ -22,6 +22,13 @@ interface GameDisplayProps {
   currentD20Roll?: number | null;
   isRollingD20?: boolean;
   previousD20ForCurrentPlayer?: number | null;
+  objective?: string;
+  threatLevel?: number;
+  queuedConsequences?: QueuedConsequence[];
+  planning?: PlanningResponse | null;
+  isPlanning?: boolean;
+  onPlanAction: () => void;
+  onApplyPlanOption: (optionId: string) => void;
 }
 
 const getActionTypeTag = (text: string): 'Action' | 'Move' | 'Bonus' | 'Reaction' | null => {
@@ -51,7 +58,14 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
     recentEvent,
     currentD20Roll,
     isRollingD20,
-    previousD20ForCurrentPlayer
+    previousD20ForCurrentPlayer,
+    objective,
+    threatLevel,
+    queuedConsequences,
+    planning,
+    isPlanning,
+    onPlanAction,
+    onApplyPlanOption
 }) => {
   const showVideoButton = !isGeneratingImage && !isGeneratingVideoScene && sceneImageUrl && !sceneVideoUrl;
   const [customAction, setCustomAction] = useState('');
@@ -64,7 +78,7 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
   };
 
   return (
-    <main className="w-full lg:w-2/3 bg-gray-900/50 backdrop-blur-sm p-8 rounded-lg border border-amber-800/20 shadow-lg shadow-amber-800/5">
+    <main className="w-full lg:w-3/5 bg-gray-900/50 backdrop-blur-sm p-8 rounded-lg border border-amber-800/20 shadow-lg shadow-amber-800/5">
       
       <div className="relative mb-6 aspect-video bg-gray-800/50 rounded-lg overflow-hidden flex justify-center items-center border border-amber-800/20">
         {isGeneratingVideoScene ? (
@@ -105,6 +119,21 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
         {/* Using whitespace-pre-wrap to preserve formatting from the AI's narrative text. */}
         <p className="whitespace-pre-wrap min-h-[150px]">{sceneText}</p>
       </div>
+      <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+        <div className="bg-slate-800/40 border border-amber-700/30 rounded-lg p-3">
+          <p className="text-amber-400 uppercase tracking-wide mb-1">Objective</p>
+          <p className="text-amber-100">{objective || 'Push deeper into the Sunken Citadel.'}</p>
+        </div>
+        <div className="bg-slate-800/40 border border-amber-700/30 rounded-lg p-3">
+          <p className="text-amber-400 uppercase tracking-wide mb-1">Threat Level</p>
+          <p className="text-amber-100">{typeof threatLevel === 'number' ? `${threatLevel}/5` : '2/5'}</p>
+        </div>
+        <div className="bg-slate-800/40 border border-amber-700/30 rounded-lg p-3">
+          <p className="text-amber-400 uppercase tracking-wide mb-1">Queued Consequences</p>
+          <p className="text-amber-100">{queuedConsequences?.length ? `${queuedConsequences.length} pending` : 'None pending'}</p>
+        </div>
+      </div>
+
       <div className="mt-8 border-t border-amber-800/20 pt-6">
         <div className="text-center mb-4">
             <h2 className="text-xl font-bold text-amber-300">It's <span className="text-amber-100">{currentPlayerName}'s</span> turn.</h2>
@@ -179,6 +208,38 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
                     </button>
                 </div>
             </form>
+
+            <div className="mt-6 border border-violet-700/30 bg-violet-950/20 rounded-lg p-4">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <h3 className="text-violet-200 font-semibold">Tactical Planning Mode</h3>
+                <button
+                  onClick={onPlanAction}
+                  disabled={isLoading || Boolean(isPlanning)}
+                  className="text-sm bg-violet-700 hover:bg-violet-800 text-white font-semibold py-1.5 px-3 rounded disabled:bg-gray-600"
+                >
+                  {isPlanning ? 'Planning…' : 'Generate Plan'}
+                </button>
+              </div>
+              {planning?.brief ? <p className="text-sm text-violet-100 mb-3">{planning.brief}</p> : <p className="text-sm text-violet-200/80">Generate a tactical plan to preview risk/reward before committing.</p>}
+              {planning?.tacticalOptions?.length ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {planning.tacticalOptions.map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => onApplyPlanOption(opt.id)}
+                      disabled={isLoading}
+                      className="text-left p-3 rounded-lg border border-violet-600/40 bg-slate-900/40 hover:bg-slate-800/50"
+                    >
+                      <p className="text-violet-100 font-semibold">{opt.title} <span className="text-[10px] text-violet-300">[{opt.successChance}]</span></p>
+                      <p className="text-xs text-slate-200 mt-1">{opt.approach}</p>
+                      <p className="text-[11px] text-emerald-300 mt-2">Upside: {opt.upside}</p>
+                      <p className="text-[11px] text-rose-300">Risk now: {opt.immediateRisk}</p>
+                      <p className="text-[11px] text-amber-300">Later: {opt.futureRisk}</p>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           </>
         )}
       </div>

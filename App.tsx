@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { GameState, VideoPlan, Player } from './types';
+import { GameState, VideoPlan, Player, PlanningResponse } from './types';
 import * as geminiService from './services/geminiService';
 import PlayerStatsList from './components/PlayerStats';
 import GameDisplay from './components/GameDisplay';
@@ -59,6 +59,9 @@ const App: React.FC = () => {
   const [currentD20Roll, setCurrentD20Roll] = useState<number | null>(null);
   const [isRollingD20, setIsRollingD20] = useState(false);
   const [lastD20ByPlayer, setLastD20ByPlayer] = useState<Record<string, number>>({});
+  const [isPlanning, setIsPlanning] = useState(false);
+  const [planning, setPlanning] = useState<PlanningResponse | null>(null);
+  const [statDeltas, setStatDeltas] = useState<Record<string, Record<string, number>>>({});
 
   useEffect(() => {
     const checkApiKey = async () => {
@@ -211,6 +214,7 @@ const App: React.FC = () => {
       const sortedState = { ...initialState, players: playersWithPortraits, currentPlayerIndex: 0 };
       
       setGameState(sortedState as GameState);
+      setStatDeltas({});
       setPlayerNextTurnAt(initNextTurnAt(playersWithPortraits));
       generateAndSetImage(initialState.sceneText, playersWithPortraits, 'The party begins their quest at the Sunken Citadel entrance.');
       setCurrentView('game');
@@ -229,6 +233,7 @@ const App: React.FC = () => {
     try {
       setIsLoading(true);
       setError(null);
+      setPlanning(null);
       resetMedia({ keepImage: true });
       const rolledD20 = await rollVisualD20();
       const actingName = gameState.players[gameState.currentPlayerIndex]?.name;
@@ -249,6 +254,22 @@ const App: React.FC = () => {
 
       const actingPlayerBefore = gameState.players[gameState.currentPlayerIndex];
       const actingPlayerAfter = playersWithPortraits.find((p) => p.name === actingPlayerBefore?.name);
+
+      const deltas: Record<string, Record<string, number>> = {};
+      const statKeys = ['health', 'mana', 'strength', 'agility', 'intellect', 'charisma', 'luck', 'xp'] as const;
+      for (const p of playersWithPortraits) {
+        const oldP = gameState.players.find((x) => x.name === p.name);
+        if (!oldP) continue;
+        const playerDeltas: Record<string, number> = {};
+        for (const key of statKeys) {
+          const before = oldP.stats[key] ?? 0;
+          const after = p.stats[key] ?? 0;
+          const delta = after - before;
+          if (delta !== 0) playerDeltas[key] = delta;
+        }
+        if (Object.keys(playerDeltas).length > 0) deltas[p.name] = playerDeltas;
+      }
+      setStatDeltas(deltas);
 
       if (actingPlayerBefore && actingPlayerAfter) {
         const beforeStats = actingPlayerBefore.stats;
@@ -298,6 +319,29 @@ const App: React.FC = () => {
     handleAction((gs, rolledD20) => geminiService.resolveAction(gs, null, customActionText, rolledD20, gs.players[gs.currentPlayerIndex]?.name), customActionText);
   };
 
+
+  const handlePlanAction = useCallback(async () => {
+    if (!gameState || isLoading || isPlanning) return;
+    try {
+      setIsPlanning(true);
+      setError(null);
+      const actingPlayerName = gameState.players[gameState.currentPlayerIndex]?.name;
+      const plan = await geminiService.planAction(gameState, actingPlayerName);
+      setPlanning(plan);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown planning error';
+      setError(`Failed to generate tactical plan. ${errorMessage}`);
+    } finally {
+      setIsPlanning(false);
+    }
+  }, [gameState, isLoading, isPlanning]);
+
+  const handleApplyPlanOption = (optionId: string) => {
+    const option = planning?.tacticalOptions.find((o) => o.id === optionId);
+    if (!option) return;
+    const action = `${option.title}: ${option.approach}`;
+    handleCustomActionSubmit(action);
+  };
 
   const handleGenerateVideo = useCallback(async () => {
       if (!gameState || !sceneImageUrl || isGeneratingVideoScene) return;
@@ -355,7 +399,7 @@ const App: React.FC = () => {
         <div className="mb-6 w-full">
           <InitiativeQueue queue={initiativeQueue} />
         </div>
-        <div className="flex flex-col lg:flex-row gap-8">
+        <div className="flex flex-col lg:flex-row gap-8 min-w-0">
           <GameDisplay 
             sceneText={gameState.sceneText} 
             choices={gameState.choices} 
@@ -374,8 +418,15 @@ const App: React.FC = () => {
             currentD20Roll={currentD20Roll}
             isRollingD20={isRollingD20}
             previousD20ForCurrentPlayer={lastD20ByPlayer[currentPlayer.name] ?? null}
+            objective={gameState.objective}
+            threatLevel={gameState.threatLevel}
+            queuedConsequences={gameState.queuedConsequences || []}
+            planning={planning}
+            isPlanning={isPlanning}
+            onPlanAction={handlePlanAction}
+            onApplyPlanOption={handleApplyPlanOption}
           />
-          <PlayerStatsList players={gameState.players} currentPlayerIndex={gameState.currentPlayerIndex} />
+          <PlayerStatsList players={gameState.players} currentPlayerIndex={gameState.currentPlayerIndex} statDeltas={statDeltas} />
         </div>
         <div className="text-center mt-8">
           <button 

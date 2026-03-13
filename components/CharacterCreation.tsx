@@ -46,6 +46,7 @@ const CharacterCreation: React.FC<CharacterCreationProps> = ({ onSubmit, isLoadi
     }))
   );
   const [enlargedImageUrl, setEnlargedImageUrl] = useState<string | null>(null);
+  const [isRegeneratingDemoLooks, setIsRegeneratingDemoLooks] = useState(false);
 
   const handlePlayerCountChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const count = parseInt(e.target.value, 10);
@@ -66,6 +67,30 @@ const CharacterCreation: React.FC<CharacterCreationProps> = ({ onSubmit, isLoadi
     });
   };
 
+  const regenerateDemoLooks = useCallback(async (demoPlayers: PlayerData[]) => {
+    setIsRegeneratingDemoLooks(true);
+    setPlayers(current => current.map((row) => ({ ...row, isGeneratingPortrait: true })));
+
+    try {
+      await Promise.all(demoPlayers.map(async (p, index) => {
+        if (!p.portraitPrompt) {
+          setPlayers(current => current.map((row, i) => i === index ? { ...row, isGeneratingPortrait: false } : row));
+          return;
+        }
+
+        try {
+          const imageUrl = await geminiService.generateCharacterPortrait(p.portraitPrompt);
+          setPlayers(current => current.map((row, i) => i === index ? { ...row, portraitUrl: imageUrl, isGeneratingPortrait: false } : row));
+        } catch {
+          const fallback = makeFallbackPortrait(`${p.name || 'hero'}-${p.role}-${index}`);
+          setPlayers(current => current.map((row, i) => i === index ? { ...row, portraitUrl: fallback, isGeneratingPortrait: false } : row));
+        }
+      }));
+    } finally {
+      setIsRegeneratingDemoLooks(false);
+    }
+  }, []);
+
   const applyDemoParty = () => {
     const demoCount = DEMO_PARTY.length;
     setPlayerCount(demoCount);
@@ -78,6 +103,7 @@ const CharacterCreation: React.FC<CharacterCreationProps> = ({ onSubmit, isLoadi
       isGeneratingPortrait: false,
     }));
     setPlayers(demoPlayers);
+    regenerateDemoLooks(demoPlayers);
   };
 
   const handlePlayerChange = (index: number, field: keyof Omit<PlayerData, 'portraitUrl' | 'isGeneratingPortrait'>, value: string) => {
@@ -178,10 +204,10 @@ const CharacterCreation: React.FC<CharacterCreationProps> = ({ onSubmit, isLoadi
             <button
               type="button"
               onClick={applyDemoParty}
-              disabled={isLoading}
+              disabled={isLoading || isRegeneratingDemoLooks}
               className="mt-3 w-full bg-emerald-700 hover:bg-emerald-800 text-white font-semibold py-2 px-3 rounded-lg transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
             >
-              Use Demo Party (Fast Start)
+              {isRegeneratingDemoLooks ? 'Improving Demo Portraits…' : 'Use Demo Party (Fast Start)'}
             </button>
           </div>
           
@@ -283,7 +309,7 @@ const CharacterCreation: React.FC<CharacterCreationProps> = ({ onSubmit, isLoadi
             <button
               type="submit"
               className="bg-amber-700 hover:bg-amber-800 text-white font-bold py-3 px-8 rounded-lg transition-all duration-200 shadow-md shadow-amber-700/20 disabled:bg-gray-600 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center mx-auto min-w-[200px] h-[50px]"
-              disabled={isLoading || players.some(p => !p.name.trim() || !p.backstory.trim())}
+              disabled={isLoading || isRegeneratingDemoLooks || players.some(p => !p.name.trim() || !p.backstory.trim())}
             >
               {isLoading ? <LoadingSpinner /> : 'Begin Adventure'}
             </button>
