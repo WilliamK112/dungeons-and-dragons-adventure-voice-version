@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Player } from '../types';
 import { isDead } from '../utils/turnOrder';
 
@@ -49,6 +49,7 @@ interface PlayerStatsCardProps {
   isActive: boolean;
   dead: boolean;
   statDeltas?: Record<string, number>;
+  onPortraitClick?: (player: Player) => void;
 }
 
 const StatBar: React.FC<{ label: string; value: number; color: string; isProgress?: boolean; delta?: number }> = ({ label, value, color, isProgress = false, delta }) => {
@@ -107,7 +108,7 @@ const DeadOverlay: React.FC = () => (
   </div>
 );
 
-const PlayerStatsCard: React.FC<PlayerStatsCardProps> = ({ player, isActive, dead, statDeltas: playerDeltas }) => {
+const PlayerStatsCard: React.FC<PlayerStatsCardProps> = ({ player, isActive, dead, statDeltas: playerDeltas, onPortraitClick }) => {
   const { stats } = player;
   return (
     <div className={`relative bg-gray-900/50 backdrop-blur-sm p-3 rounded-lg border shadow-lg min-w-0 overflow-hidden ${dead ? 'opacity-70 border-red-500/70' : isActive ? 'border-amber-500 shadow-amber-500/20' : 'border-amber-800/20 shadow-amber-800/5'}`}>
@@ -119,11 +120,17 @@ const PlayerStatsCard: React.FC<PlayerStatsCardProps> = ({ player, isActive, dea
           {dead && <span className="text-[10px] font-bold bg-red-600 text-white px-1.5 py-0.5 rounded-full">DEAD</span>}
         </div>
         {player.portraitUrl && (
-          <img
-            src={player.portraitUrl}
-            alt={`${player.name}'s portrait`}
-            className="w-20 h-20 rounded-lg object-cover border-2 border-amber-500/50 shadow-md shrink-0"
-          />
+          <button
+            type="button"
+            onClick={() => onPortraitClick?.(player)}
+            className="w-20 h-20 rounded-lg overflow-hidden border-2 border-amber-500/50 shadow-md shrink-0 focus:outline-none focus:ring-2 focus:ring-amber-400/50 cursor-pointer hover:opacity-90 transition"
+          >
+            <img
+              src={player.portraitUrl}
+              alt={`${player.name}'s portrait`}
+              className="w-full h-full object-cover"
+            />
+          </button>
         )}
       </div>
       <div className="space-y-2 text-xs">
@@ -175,6 +182,16 @@ const PlayerStatsCard: React.FC<PlayerStatsCardProps> = ({ player, isActive, dea
 };
 
 const PlayerStatsList: React.FC<PlayerStatsListProps> = ({ players, currentPlayerIndex, statDeltas = {} }) => {
+  const [expandedPlayer, setExpandedPlayer] = useState<Player | null>(null);
+
+  useEffect(() => {
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setExpandedPlayer(null);
+    };
+    window.addEventListener('keydown', onEsc);
+    return () => window.removeEventListener('keydown', onEsc);
+  }, []);
+
   if (!players || players.length === 0) return null;
 
   const currentPlayer = players[currentPlayerIndex];
@@ -198,10 +215,36 @@ const PlayerStatsList: React.FC<PlayerStatsListProps> = ({ players, currentPlaye
               isActive={!dead && currentPlayer?.name === player.name}
               dead={dead}
               statDeltas={statDeltas[player.name]}
+              onPortraitClick={setExpandedPlayer}
             />
           );
         })}
       </div>
+
+      {expandedPlayer?.portraitUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => setExpandedPlayer(null)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === 'Enter' && setExpandedPlayer(null)}
+          aria-label="Close portrait"
+        >
+          <div
+            className="relative max-w-[90vw] max-h-[90vh] rounded-xl overflow-hidden border-2 border-amber-500/50 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={expandedPlayer.portraitUrl}
+              alt={`${expandedPlayer.name}'s portrait`}
+              className="max-w-full max-h-[85vh] w-auto h-auto object-contain"
+            />
+            <p className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent py-2 px-4 text-amber-200 font-semibold text-center">
+              {expandedPlayer.name}
+            </p>
+          </div>
+        </div>
+      )}
     </aside>
   );
 };

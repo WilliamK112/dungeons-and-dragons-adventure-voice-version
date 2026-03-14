@@ -105,6 +105,9 @@ Create `.env.local` in the project root:
 GEMINI_API_KEY=your_key_here
 # Optional: route game command calls through deployed cloud backend
 VITE_BACKEND_URL=https://your-cloud-run-service-url
+# Optional TTS routing preference (default set to cosyvoice in app service call)
+VITE_TTS_PROVIDER=cosyvoice
+VITE_TTS_FALLBACK_PROVIDER=openai
 ```
 
 ---

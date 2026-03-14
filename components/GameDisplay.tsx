@@ -1,8 +1,9 @@
 
-import React, { useState, FormEvent } from 'react';
+import React, { useState, FormEvent, useEffect, useRef } from 'react';
 import { Choice, PlanningResponse, QueuedConsequence } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import D20Roller from './D20Roller';
+import { generateStoryNarrationAudio } from '../services/geminiService';
 
 interface GameDisplayProps {
   sceneText: string;
@@ -30,6 +31,53 @@ interface GameDisplayProps {
   onPlanAction: () => void;
   onApplyPlanOption: (optionId: string) => void;
 }
+
+const NARRATION_PRESETS = [
+  {
+    id: 'deep',
+    label: 'Deep Male',
+    backend: 'onyx',
+    instructions: 'Dark fantasy narrator. Low, warm baritone. Calm, mysterious, intimate. Avoid bright or upbeat tone. Keep pacing steady and cinematic.',
+    fallback: { pitch: 0.45, rate: 0.68, volume: 0.65, hints: ['baritone', 'deep', 'narrator', 'ralph', 'victor', 'daniel'] }
+  },
+  {
+    id: 'whisper',
+    label: 'Whisper Mysterious',
+    backend: 'onyx',
+    instructions: 'Whisper-like dark storyteller. Soft, close, secretive, and eerie. Keep volume gentle and emotional intensity restrained.',
+    fallback: { pitch: 0.4, rate: 0.62, volume: 0.55, hints: ['whisper', 'narrator', 'deep', 'male'] }
+  },
+  {
+    id: 'female',
+    label: 'Soft Female',
+    backend: 'nova',
+    instructions: 'Warm, clear, gentle female narration. Calm and immersive, suitable for fantasy storytelling.',
+    fallback: { pitch: 1.08, rate: 0.9, volume: 0.85, hints: ['samantha', 'karen', 'victoria', 'female'] }
+  },
+] as const;
+
+const splitNarrationChunks = (text: string, maxChars = 900): string[] => {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (!normalized) return [];
+  const sentences = normalized.split(/(?<=[.!?。！？])\s+/);
+  const chunks: string[] = [];
+  let current = '';
+  for (const sentence of sentences) {
+    if (!sentence) continue;
+    if (!current) {
+      current = sentence;
+      continue;
+    }
+    if ((current + ' ' + sentence).length <= maxChars) {
+      current += ` ${sentence}`;
+    } else {
+      chunks.push(current);
+      current = sentence;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
+};
 
 const getActionTypeTag = (text: string): 'Action' | 'Move' | 'Bonus' | 'Reaction' | null => {
   const match = text.match(/^\[(Action|Move|Bonus|Reaction)\]/i);
@@ -69,6 +117,114 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
 }) => {
   const showVideoButton = !isGeneratingImage && !isGeneratingVideoScene && sceneImageUrl && !sceneVideoUrl;
   const [customAction, setCustomAction] = useState('');
+  const [isNarrating, setIsNarrating] = useState(false);
+  const [isNarrationLoading, setIsNarrationLoading] = useState(false);
+  const [voicePreset, setVoicePreset] = useState<(typeof NARRATION_PRESETS)[number]['id']>('deep');
+  const [narrationProgress, setNarrationProgress] = useState<{ index: number; total: number } | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+  const narrationStopRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      narrationStopRef.current = true;
+      window.speechSynthesis?.cancel();
+      if (audioRef.current) audioRef.current.pause();
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current);
+        audioUrlRef.current = null;
+      }
+    };
+  }, []);
+
+  const fallbackToSpeechSynthesis = (text: string) => {
+    const preset = NARRATION_PRESETS.find(p => p.id === voicePreset) || NARRATION_PRESETS[1];
+    const { pitch, rate, volume, hints } = preset.fallback;
+    const synth = window.speechSynthesis;
+    synth.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'en-US';
+    utterance.rate = rate;
+    utterance.pitch = pitch;
+    utterance.volume = volume;
+    const voices = synth.getVoices();
+    const pick = (h: readonly string[]) => voices.find(v => {
+      const key = `${v.name} ${v.voiceURI}`.toLowerCase();
+      return h.some(x => key.includes(x));
+    });
+    const voice = pick(hints) || pick(['male', 'female', 'english']) || voices[0];
+    if (voice) utterance.voice = voice;
+    utterance.onstart = () => setIsNarrating(true);
+    utterance.onend = () => setIsNarrating(false);
+    utterance.onerror = () => setIsNarrating(false);
+    synth.speak(utterance);
+  };
+
+  const toggleStoryNarration = async () => {
+    if (isNarrating) {
+      narrationStopRef.current = true;
+      window.speechSynthesis?.cancel();
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      setIsNarrating(false);
+      setNarrationProgress(null);
+      return;
+    }
+
+    const cleanText = sceneText?.trim();
+    if (!cleanText || isNarrationLoading) return;
+
+    narrationStopRef.current = false;
+    const chunks = splitNarrationChunks(cleanText, 900).slice(0, 6);
+    if (!chunks.length) return;
+
+    setNarrationProgress({ index: 1, total: chunks.length });
+    setIsNarrationLoading(true);
+    setIsNarrating(true);
+
+    try {
+      const preset = NARRATION_PRESETS.find(p => p.id === voicePreset) || NARRATION_PRESETS[0];
+
+      for (let i = 0; i < chunks.length; i++) {
+        if (narrationStopRef.current) break;
+        setNarrationProgress({ index: i + 1, total: chunks.length });
+
+        const audioUrl = await generateStoryNarrationAudio(chunks[i], {
+          voice: preset.backend,
+          model: 'gpt-4o-mini-tts',
+          format: 'mp3',
+          timeoutMs: 12000,
+          instructions: preset.instructions,
+        });
+
+        if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+        audioUrlRef.current = audioUrl;
+
+        const audio = new Audio(audioUrl);
+        audioRef.current = audio;
+
+        await new Promise<void>((resolve, reject) => {
+          audio.onended = () => resolve();
+          audio.onerror = () => reject(new Error('Audio playback failed'));
+          audio.play().catch(reject);
+        });
+      }
+    } catch (error) {
+      console.error('Narration error:', error);
+      if (!narrationStopRef.current && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        fallbackToSpeechSynthesis(cleanText);
+      } else if (!narrationStopRef.current) {
+        alert('Failed to generate narration. Please check backend OPENAI_API_KEY and try again.');
+      }
+    } finally {
+      setIsNarrationLoading(false);
+      setIsNarrating(false);
+      setNarrationProgress(null);
+      narrationStopRef.current = false;
+    }
+  };
 
   const handleCustomSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -118,6 +274,39 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
       <div className="prose prose-invert max-w-none prose-p:text-gray-300 prose-headings:text-amber-300">
         {/* Using whitespace-pre-wrap to preserve formatting from the AI's narrative text. */}
         <p className="whitespace-pre-wrap min-h-[150px]">{sceneText}</p>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-1.5">
+          {NARRATION_PRESETS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setVoicePreset(p.id)}
+                className={`text-[11px] px-2 py-1 rounded border transition ${
+                  voicePreset === p.id
+                    ? 'bg-indigo-600/50 border-indigo-500 text-indigo-100'
+                    : 'bg-slate-800/50 border-slate-600/50 text-slate-300 hover:border-indigo-600/50'
+                }`}
+                title={`Voice: ${p.label}`}
+              >
+              {p.label}
+            </button>
+            ))}
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <button
+            type="button"
+            onClick={toggleStoryNarration}
+            disabled={!sceneText?.trim() || isNarrationLoading}
+            className="bg-indigo-950/70 hover:bg-indigo-900 text-indigo-100 text-xs md:text-sm font-semibold px-3 py-1.5 rounded-lg border border-indigo-600/40 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            title={!sceneText?.trim() ? 'No story text to narrate yet' : 'Narrate current story'}
+          >
+            {isNarrationLoading ? 'Preparing Voice…' : isNarrating ? 'Stop Narration' : 'Listen to Story'}
+          </button>
+          {narrationProgress && (
+            <span className="text-[11px] text-indigo-300/90">Auto queue: part {narrationProgress.index}/{narrationProgress.total}</span>
+          )}
+        </div>
       </div>
       <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
         <div className="bg-slate-800/40 border border-amber-700/30 rounded-lg p-3">

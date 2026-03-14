@@ -30,6 +30,50 @@ function getBackendBaseUrl(): string | null {
     return raw ? raw.replace(/\/$/, '') : null;
 }
 
+export const generateStoryNarrationAudio = async (
+    text: string,
+    opts?: { voice?: string; model?: string; format?: 'mp3' | 'wav'; instructions?: string; timeoutMs?: number; provider?: 'openai' | 'cosyvoice'; fallbackProvider?: 'openai' | 'cosyvoice' }
+): Promise<string> => {
+    const backendBaseUrl = getBackendBaseUrl();
+    if (!backendBaseUrl) {
+        throw new Error('TTS requires backend. Set VITE_BACKEND_URL in frontend env.');
+    }
+
+    const controller = new AbortController();
+    const timeoutMs = opts?.timeoutMs ?? 12000;
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    const response = await fetch(`${backendBaseUrl}/api/tts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+            text,
+            voice: opts?.voice || 'onyx',
+            model: opts?.model || 'gpt-4o-mini-tts',
+            format: opts?.format || 'mp3',
+            instructions: opts?.instructions || 'Speak in a calm, low, mysterious male narrator voice.',
+            provider: opts?.provider || ((process.env.VITE_TTS_PROVIDER as 'openai' | 'cosyvoice') || 'cosyvoice'),
+            fallbackProvider: opts?.fallbackProvider || ((process.env.VITE_TTS_FALLBACK_PROVIDER as 'openai' | 'cosyvoice') || 'openai'),
+            timeoutMs,
+        }),
+    }).finally(() => clearTimeout(timer));
+
+    if (!response.ok) {
+        let detail = `HTTP ${response.status}`;
+        try {
+            const err = await response.json();
+            detail = err?.error || detail;
+        } catch {
+            // ignore parse errors
+        }
+        throw new Error(`Narration generation failed: ${detail}`);
+    }
+
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+};
+
 /**
  * Parses an error from the Gemini API and returns a user-friendly message.
  */
