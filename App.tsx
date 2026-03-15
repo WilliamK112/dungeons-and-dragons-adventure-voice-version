@@ -7,6 +7,7 @@ import VideoPlanModal from './components/VideoPlanModal';
 import CharacterCreation, { PlayerData } from './components/CharacterCreation';
 import CoverPage from './components/CoverPage';
 import MusicPlayer from './components/MusicPlayer';
+import SuccessPage from './components/SuccessPage';
 import { motion, AnimatePresence } from 'motion/react';
 import { playChoiceClick, playFail, playInventoryGain, playLevelUp, playSuccess } from './utils/audioSfx';
 import {
@@ -26,6 +27,25 @@ const getApiKeyStatus = (key: string, isSelected: boolean): ApiKeyStatus => {
   return 'looks-invalid';
 };
 
+const OBJECTIVE_COMPLETE_RE = /(objective\s*(complete|completed)|quest\s*(complete|completed)|mission accomplished|victory|you\s*(win|won)|dragon'?s\s*eye\s*(retrieved|secured|claimed))/i;
+
+const isObjectiveComplete = (state: GameState | null): boolean => {
+  if (!state) return false;
+  // Important: do NOT use objective text itself as success evidence,
+  // otherwise phrases like "Retrieve ..." can cause false positives.
+  const textCorpus = [
+    state.sceneText || '',
+    ...(state.log || []).slice(-8),
+  ].join(' ');
+
+  if (OBJECTIVE_COMPLETE_RE.test(textCorpus)) return true;
+
+  const lowThreat = typeof state.threatLevel === 'number' && state.threatLevel <= 1;
+  const hooksResolved = (state.unresolvedHooks || []).length === 0;
+  const hasFinaleContext = /(citadel|dragon'?s\s*eye|relic|final objective)/i.test(textCorpus);
+  return lowThreat && hooksResolved && hasFinaleContext;
+};
+
 const App: React.FC = () => {
   useEffect(() => {
     const fallback = document.getElementById('boot-fallback');
@@ -35,7 +55,7 @@ const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [currentView, setCurrentView] = useState<'cover' | 'creation' | 'game'>('cover');
+  const [currentView, setCurrentView] = useState<'cover' | 'creation' | 'game' | 'success'>('cover');
   
   const [isVideoPlanModalOpen, setIsVideoPlanModalOpen] = useState(false);
   const [videoPlan, setVideoPlan] = useState<VideoPlan | null>(null);
@@ -62,6 +82,7 @@ const App: React.FC = () => {
   const [isPlanning, setIsPlanning] = useState(false);
   const [planning, setPlanning] = useState<PlanningResponse | null>(null);
   const [statDeltas, setStatDeltas] = useState<Record<string, Record<string, number>>>({});
+  const [turnsPlayed, setTurnsPlayed] = useState<number>(0);
 
   useEffect(() => {
     const checkApiKey = async () => {
@@ -135,7 +156,6 @@ const App: React.FC = () => {
     generateCover();
   }, [currentView, coverImageUrl, isGeneratingCover, hasTriedCoverGeneration]);
 
-
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (currentView !== 'cover') return;
@@ -186,6 +206,25 @@ const App: React.FC = () => {
 
   const handleStartGame = () => {
     setError(null);
+    setTurnsPlayed(0);
+    setCurrentView('creation');
+  };
+
+  const handleContinueFromSuccess = () => {
+    setCurrentView('game');
+  };
+
+  const handleRestartCampaign = () => {
+    setGameState(null);
+    setPlanning(null);
+    setCurrentD20Roll(null);
+    setIsRollingD20(false);
+    setLastD20ByPlayer({});
+    setStatDeltas({});
+    setTurnsPlayed(0);
+    setPlayerNextTurnAt({});
+    resetMedia();
+    setError(null);
     setCurrentView('creation');
   };
 
@@ -214,6 +253,7 @@ const App: React.FC = () => {
       const sortedState = { ...initialState, players: playersWithPortraits, currentPlayerIndex: 0 };
       
       setGameState(sortedState as GameState);
+      setTurnsPlayed(0);
       setStatDeltas({});
       setPlayerNextTurnAt(initNextTurnAt(playersWithPortraits));
       generateAndSetImage(initialState.sceneText, playersWithPortraits, 'The party begins their quest at the Sunken Citadel entrance.');
@@ -298,6 +338,7 @@ const App: React.FC = () => {
         currentPlayerIndex: nextPlayerIndex >= 0 ? nextPlayerIndex : gameState.currentPlayerIndex 
       };
       setGameState(finalState);
+      setTurnsPlayed((v) => v + 1);
 
       generateAndSetImage(finalState.sceneText, finalState.players, actionContext);
     } catch (err) {
@@ -307,6 +348,16 @@ const App: React.FC = () => {
       setIsLoading(false);
     }
   }, [gameState, isLoading, generateAndSetImage, playerNextTurnAt]);
+
+  useEffect(() => {
+    if (currentView !== 'game') return;
+    if (!gameState) return;
+    // Prevent instant jump to success on initial game load.
+    if (turnsPlayed < 1) return;
+    if (isObjectiveComplete(gameState)) {
+      setCurrentView('success');
+    }
+  }, [gameState, currentView, turnsPlayed]);
 
   const handleChoiceSelect = (choiceId: number) => {
     playChoiceClick();
@@ -452,10 +503,14 @@ const App: React.FC = () => {
     transition: 'transform 0.3s ease-out',
   };
 
+  const SUCCESS_BG = '/image--bakcfound.png';
   const appStyle: React.CSSProperties = {
-    backgroundImage: (currentView === 'cover' && coverImageUrl)
-        ? `url(${coverImageUrl})`
-        : `linear-gradient(to bottom right, #020617, #111827)`,
+    backgroundImage:
+      currentView === 'success'
+        ? `linear-gradient(to bottom, rgba(15, 23, 42, 0.5) 0%, rgba(15, 23, 42, 0.6) 100%), url(${SUCCESS_BG})`
+        : (currentView === 'cover' && coverImageUrl)
+          ? `url(${coverImageUrl})`
+          : `linear-gradient(to bottom right, #020617, #111827)`,
     backgroundColor: '#020617', // Fallback
   };
 
@@ -468,7 +523,7 @@ const App: React.FC = () => {
     <div className="relative min-h-screen p-4 sm:p-8 bg-cover bg-center transition-all duration-1000" style={appStyle}>
       <MusicPlayer isTense={isTenseScene} />
       <div 
-        className={`absolute inset-0 bg-black transition-opacity duration-1000 ${currentView === 'cover' && coverImageUrl ? 'opacity-60' : 'opacity-0'}`} 
+        className={`absolute inset-0 bg-black transition-opacity duration-1000 ${(currentView === 'cover' || currentView === 'success') && coverImageUrl ? 'opacity-60' : 'opacity-0'}`} 
         style={{ pointerEvents: 'none' }}
       ></div>
 
@@ -526,6 +581,23 @@ const App: React.FC = () => {
                 animate={{ opacity: 1 }}
               >
                 {renderGameContent()}
+              </motion.div>
+            )}
+
+            {currentView === 'success' && (
+              <motion.div
+                key="success"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+              >
+                <SuccessPage
+                  objective={gameState?.objective}
+                  summary={gameState?.log?.[gameState.log.length - 1] || gameState?.sceneText}
+                  players={gameState?.players || []}
+                  onContinue={handleContinueFromSuccess}
+                  onRestart={handleRestartCampaign}
+                />
               </motion.div>
             )}
           </AnimatePresence>

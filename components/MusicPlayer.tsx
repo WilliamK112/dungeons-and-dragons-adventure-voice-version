@@ -7,6 +7,7 @@ interface MusicPlayerProps {
 const TRACKS = {
   calm: '/audio/explore-greensleeves.ogg',
   tense: '/audio/tense-tourdion.ogg',
+  epic: '/audio/epic-fantasy-cinematic.webm',
 };
 
 const MusicPlayer: React.FC<MusicPlayerProps> = (_props) => {
@@ -17,8 +18,8 @@ const MusicPlayer: React.FC<MusicPlayerProps> = (_props) => {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // User request: keep tense BGM continuously during story for now.
-  const activeTrack = TRACKS.tense;
+  // User request: use epic cinematic BGM continuously during story.
+  const activeTrack = TRACKS.epic;
 
   useEffect(() => {
     try {
@@ -138,7 +139,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = (_props) => {
         {isPlaying ? '⏸' : '▶'}
       </button>
 
-      <span className="text-xs text-rose-300 bg-black/50 border border-rose-500/40 px-2 py-1 rounded-md">⚔️ Tense</span>
+      <span className="text-xs text-amber-300 bg-black/50 border border-amber-500/40 px-2 py-1 rounded-md">🎼 Epic</span>
     </div>
   );
 };
