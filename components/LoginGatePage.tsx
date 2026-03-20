@@ -90,6 +90,15 @@ const LoginGatePage: React.FC<LoginGatePageProps> = ({
 }) => {
   const disableAuth = isAuthBusy;
   const [authTab, setAuthTab] = React.useState<AuthTab>('guest');
+  /** Expanded by default whenever user switches to Register (verification + reset). */
+  const [verifySectionOpen, setVerifySectionOpen] = React.useState(false);
+  const prevAuthTab = React.useRef<AuthTab>('guest');
+  React.useEffect(() => {
+    if (authTab === 'signup' && prevAuthTab.current !== 'signup') {
+      setVerifySectionOpen(true);
+    }
+    prevAuthTab.current = authTab;
+  }, [authTab]);
 
   const tabActive = 'bg-amber-600/90 text-stone-950 shadow-sm';
   const tabIdle = 'text-amber-200/75 hover:bg-amber-950/40 hover:text-amber-100';
@@ -250,7 +259,11 @@ const LoginGatePage: React.FC<LoginGatePageProps> = ({
                   </button>
                 )}
 
-                <details className="group rounded-lg border border-amber-500/15 bg-slate-900/35">
+                <details
+                  className="group rounded-lg border border-amber-500/15 bg-slate-900/35"
+                  open={verifySectionOpen}
+                  onToggle={(e) => setVerifySectionOpen(e.currentTarget.open)}
+                >
                   <summary className="cursor-pointer list-none px-3 py-2.5 text-sm text-amber-200/80 marker:content-none [&::-webkit-details-marker]:hidden">
                     <span className="underline decoration-amber-500/40 underline-offset-2 group-open:decoration-amber-500/70">
                       Verification code, magic link, or forgot password
