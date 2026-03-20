@@ -75,6 +75,28 @@ The login page calls **`GET /api/auth/status`** to show whether Resend is config
 
 Verification, password-reset, and magic-link messages include a simple **HTML** body in addition to plain text when using Resend.
 
+## QQ Mail (`@qq.com`) — real delivery when Resend blocks the recipient
+
+Resend’s **test sender** (`onboarding@resend.dev`) often returns **403** for addresses it is not allowed to mail (including many `@qq.com` inboxes) until you **verify your own domain** in Resend. Two ways to get codes in a QQ inbox:
+
+1. **Recommended long-term:** Add and verify a domain at [resend.com/domains](https://resend.com/domains), then set `DND_FROM_EMAIL=noreply@your-verified-domain.com`. Resend can then deliver to `@qq.com` and other addresses.
+
+2. **Use Tencent’s SMTP** (send through QQ’s servers so the message lands in the same mailbox system). In QQ Mail on the web: **Settings → Account → POP3/IMAP/SMTP** — enable SMTP and create an **authorization code** (not your login password). Then in `backend/.env`:
+
+```env
+DND_EMAIL_PROVIDER=auto
+RESEND_API_KEY=re_...   # optional; if Resend fails with 403, auto tries SMTP next
+
+DND_SMTP_HOST=smtp.qq.com
+DND_SMTP_PORT=465
+DND_SMTP_SECURE=1
+DND_SMTP_USER=you@qq.com
+DND_SMTP_PASS=your-smtp-authorization-code
+DND_SMTP_FROM=you@qq.com
+```
+
+Restart the backend, register again, and check spam. You can use **`DND_EMAIL_PROVIDER=smtp`** to skip Resend entirely while testing QQ-only delivery.
+
 ## Local dev without inbox access
 
 Set **`DND_DEV_EXPOSE_CODE_IN_API=1`** in `backend/.env` (never in production). When email cannot be delivered, API responses include **`devVerificationCode`** or **`devMagicLinkUrl`** so the UI can fill the code in for you.
@@ -83,6 +105,8 @@ Set **`DND_DEV_EXPOSE_CODE_IN_API=1`** in `backend/.env` (never in production). 
 
 - **`Email send failed (403): ... only send testing emails to your own email address (...)`**  
   Your API key works, but Resend is restricting **who can receive** mail while you use the default test setup. **Fix:** verify your domain (link above) and set `DND_FROM_EMAIL` to that domain — then you can send to `ckang2435@gmail.com` and anyone else. **Short-term test:** register / send code only to the exact address Resend allows (often your university/work email shown in the error).
+
+- **QQ / 163 / corporate inboxes never get the mail (403 in logs, UI shows dev code):** Resend test mode often **refuses `@qq.com`** and similar until you add a **verified sending domain**, or you route mail through **SMTP** (see **QQ Mail** section above). Check the backend terminal for `[EMAIL-FALLBACK]` and the exact Resend error.
 
 - **App no longer shows a hard error in local dev:** if Resend returns **403 / 422 / 429**, the backend (when **not** in `NODE_ENV=production`, or when `DND_EMAIL_FALLBACK_ON_RESEND_ERROR=1`) **logs the same message to the terminal** as `[EMAIL-FALLBACK]` and returns success with `resendFallback: true`, so you can copy the **code or magic link** from the server log. **Production** defaults to failing loud unless you set `DND_EMAIL_FALLBACK_ON_RESEND_ERROR=1` (emergency only) or fix the domain.
 

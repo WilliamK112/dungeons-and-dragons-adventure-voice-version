@@ -19,6 +19,8 @@ export type MailServerStatus =
       devExposeCodeInApi: boolean;
     };
 
+type AuthTab = 'guest' | 'signin' | 'signup';
+
 interface LoginGatePageProps {
   mailStatus?: MailServerStatus;
   email: string;
@@ -52,6 +54,9 @@ interface LoginGatePageProps {
   isAuthBusy?: boolean;
 }
 
+const tabBtn =
+  'flex-1 rounded-md px-2 py-2 text-center text-xs font-medium transition-colors sm:text-sm min-h-[2.75rem] sm:min-h-0';
+
 const LoginGatePage: React.FC<LoginGatePageProps> = ({
   mailStatus,
   email,
@@ -84,6 +89,10 @@ const LoginGatePage: React.FC<LoginGatePageProps> = ({
   isAuthBusy = false,
 }) => {
   const disableAuth = isAuthBusy;
+  const [authTab, setAuthTab] = React.useState<AuthTab>('guest');
+
+  const tabActive = 'bg-amber-600/90 text-stone-950 shadow-sm';
+  const tabIdle = 'text-amber-200/75 hover:bg-amber-950/40 hover:text-amber-100';
 
   return (
     <motion.div
@@ -145,135 +154,186 @@ const LoginGatePage: React.FC<LoginGatePageProps> = ({
             ) : null}
             <p className="text-xs uppercase tracking-[0.25em] text-amber-300/70">Chronicles of Shadow</p>
             <h2 className="mt-2 text-3xl font-bold text-amber-100">Enter the Citadel</h2>
-            <p className="mt-3 text-sm text-amber-100/70">Create an account to enable campaign saves, replay, and room chat. Or jump in instantly as a guest.</p>
+            <p className="mt-3 text-sm text-amber-100/70">
+              Save campaigns and use room chat with an account, or play the demo as a guest.
+            </p>
 
-            <div className="mt-6 space-y-3">
-              <input
-                className="w-full rounded-lg border border-amber-400/20 bg-black/40 px-3 py-2 text-amber-100 placeholder:text-amber-200/35"
-                placeholder="email"
-                value={email}
-                onChange={(e) => onEmailChange(e.target.value)}
-              />
-              <input
-                className="w-full rounded-lg border border-amber-400/20 bg-black/40 px-3 py-2 text-amber-100 placeholder:text-amber-200/35"
-                placeholder="name"
-                value={name}
-                onChange={(e) => onNameChange(e.target.value)}
-              />
-              <input
-                type="password"
-                className="w-full rounded-lg border border-amber-400/20 bg-black/40 px-3 py-2 text-amber-100 placeholder:text-amber-200/35"
-                placeholder="password"
-                value={password}
-                onChange={(e) => onPasswordChange(e.target.value)}
-              />
+            <div
+              className="mt-5 flex rounded-xl border border-amber-500/20 bg-black/35 p-1"
+              role="tablist"
+              aria-label="Account options"
+            >
+              {(
+                [
+                  ['guest', 'Guest'],
+                  ['signin', 'Sign in'],
+                  ['signup', 'Register'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={authTab === id}
+                  className={`${tabBtn} ${authTab === id ? tabActive : tabIdle}`}
+                  onClick={() => setAuthTab(id)}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
 
-            <div className="mt-4 flex flex-wrap items-end gap-2">
-              <button
-                type="button"
-                disabled={disableAuth}
-                onClick={onRegister}
-                className="rounded-lg bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Register
-              </button>
-              <button
-                type="button"
-                disabled={disableAuth}
-                onClick={onLogin}
-                className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Login
-              </button>
-              <div className="quickstart-cta-wrap">
-                <span className="quickstart-cta-label" aria-hidden>
-                  Click me
-                </span>
+            {authTab === 'guest' ? (
+              <div className="mt-6 space-y-4">
+                <p className="text-sm text-amber-200/65">Jump in with no signup — you can create an account later from settings.</p>
                 <button
                   type="button"
                   disabled={disableAuth}
                   onClick={onQuickStart}
                   title="Try the demo instantly — no signup required"
                   aria-label="Quick Start: try the demo instantly"
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-violet-400/35 bg-violet-900/35 px-4 py-2 text-sm font-semibold text-violet-100 hover:bg-violet-800/40 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-violet-400/30 bg-violet-950/40 px-4 py-3 text-sm font-semibold text-violet-100 transition-colors hover:bg-violet-900/45 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Zap className="h-4 w-4 shrink-0" />
                   Quick Start
                 </button>
               </div>
-            </div>
-
-            <div className="mt-4 rounded-lg border border-amber-500/20 bg-slate-900/40 p-3">
-              <p className="mb-2 text-xs uppercase tracking-wider text-amber-300/80">Email Verification</p>
-              <p className="mb-2 text-[11px] text-amber-200/55">
-                New accounts: paste the 6-digit code from your email. If you try to register again with an email that already exists, we send a one-time sign-in link instead (no password in email).
-              </p>
-              <input
-                type="email"
-                autoComplete="email"
-                className="mb-2 w-full rounded-lg border border-amber-400/25 bg-black/50 px-3 py-2 text-sm text-amber-100 placeholder:text-amber-200/40"
-                placeholder="Email address"
-                value={email}
-                onChange={(e) => onEmailChange(e.target.value)}
-              />
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  disabled={disableAuth}
-                  onClick={onSendVerificationCode}
-                  className="rounded bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Send Code
-                </button>
+            ) : (
+              <div className="mt-6 space-y-4">
                 <input
-                  className="min-w-[8rem] flex-1 rounded border border-amber-500/20 bg-black/40 px-2 py-1.5 text-xs text-amber-100 placeholder:text-amber-200/35"
-                  placeholder="6-digit code from email"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  value={verificationCode}
-                  onChange={(e) => onVerificationCodeChange(e.target.value)}
+                  type="text"
+                  inputMode="email"
+                  autoComplete="email"
+                  spellCheck={false}
+                  className="w-full rounded-lg border border-amber-400/20 bg-black/40 px-3 py-2.5 text-amber-100 placeholder:text-amber-200/35"
+                  placeholder="Email"
+                  value={email}
+                  onChange={(e) => onEmailChange(e.target.value)}
                 />
-                <button
-                  type="button"
-                  disabled={disableAuth}
-                  onClick={onVerifyEmail}
-                  className="rounded bg-cyan-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Verify Email
-                </button>
-              </div>
-            </div>
 
-            <div className="mt-3 rounded-lg border border-rose-400/20 bg-slate-900/40 p-3">
-              <p className="mb-2 text-xs uppercase tracking-wider text-rose-300/80">Forgot Password</p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={disableAuth}
-                  onClick={onForgotPassword}
-                  className="rounded bg-rose-700 px-3 py-1 text-xs text-white hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Send Reset Code
-                </button>
-                <input className="rounded bg-black/40 px-2 py-1 text-xs text-amber-100" placeholder="reset code" value={resetCode} onChange={(e) => onResetCodeChange(e.target.value)} />
-                <input className="rounded bg-black/40 px-2 py-1 text-xs text-amber-100" placeholder="new password" type="password" value={newPassword} onChange={(e) => onNewPasswordChange(e.target.value)} />
-                <button
-                  type="button"
-                  disabled={disableAuth}
-                  onClick={onResetPassword}
-                  className="rounded bg-fuchsia-700 px-3 py-1 text-xs text-white hover:bg-fuchsia-600 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Reset Password
-                </button>
+                {authTab === 'signup' ? (
+                  <input
+                    className="w-full rounded-lg border border-amber-400/20 bg-black/40 px-3 py-2.5 text-amber-100 placeholder:text-amber-200/35"
+                    placeholder="Display name"
+                    autoComplete="name"
+                    value={name}
+                    onChange={(e) => onNameChange(e.target.value)}
+                  />
+                ) : null}
+
+                <input
+                  type="password"
+                  autoComplete={authTab === 'signin' ? 'current-password' : 'new-password'}
+                  className="w-full rounded-lg border border-amber-400/20 bg-black/40 px-3 py-2.5 text-amber-100 placeholder:text-amber-200/35"
+                  placeholder="Password"
+                  value={password}
+                  onChange={(e) => onPasswordChange(e.target.value)}
+                />
+
+                {authTab === 'signin' ? (
+                  <button
+                    type="button"
+                    disabled={disableAuth}
+                    onClick={onLogin}
+                    className="w-full rounded-lg bg-amber-600 px-4 py-3 text-sm font-semibold text-stone-950 hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Sign in
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={disableAuth}
+                    onClick={onRegister}
+                    className="w-full rounded-lg bg-amber-600 px-4 py-3 text-sm font-semibold text-stone-950 hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Create account
+                  </button>
+                )}
+
+                <details className="group rounded-lg border border-amber-500/15 bg-slate-900/35">
+                  <summary className="cursor-pointer list-none px-3 py-2.5 text-sm text-amber-200/80 marker:content-none [&::-webkit-details-marker]:hidden">
+                    <span className="underline decoration-amber-500/40 underline-offset-2 group-open:decoration-amber-500/70">
+                      Verification code, magic link, or forgot password
+                    </span>
+                  </summary>
+                  <div className="space-y-4 border-t border-amber-500/10 px-3 pb-3 pt-2">
+                    <p className="text-[11px] leading-relaxed text-amber-200/50">
+                      After registering, check your email for a 6-digit code. If the address is already taken, we may send a one-time sign-in link instead.
+                    </p>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                      <button
+                        type="button"
+                        disabled={disableAuth}
+                        onClick={onSendVerificationCode}
+                        className="rounded-lg border border-amber-500/35 bg-amber-950/30 px-3 py-2 text-xs font-medium text-amber-100 hover:bg-amber-900/35 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Send code
+                      </button>
+                      <input
+                        className="min-w-0 flex-1 rounded-lg border border-amber-500/20 bg-black/40 px-2 py-2 text-sm text-amber-100 placeholder:text-amber-200/35 sm:max-w-[10rem]"
+                        placeholder="6-digit code"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        value={verificationCode}
+                        onChange={(e) => onVerificationCodeChange(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        disabled={disableAuth}
+                        onClick={onVerifyEmail}
+                        className="rounded-lg border border-amber-500/35 bg-amber-950/30 px-3 py-2 text-xs font-medium text-amber-100 hover:bg-amber-900/35 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Verify email
+                      </button>
+                    </div>
+                    <div className="border-t border-amber-500/10 pt-3">
+                      <p className="mb-2 text-[11px] uppercase tracking-wide text-amber-200/45">Reset password</p>
+                      <div className="flex flex-col gap-2">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={disableAuth}
+                            onClick={onForgotPassword}
+                            className="rounded-lg border border-amber-500/35 bg-amber-950/30 px-3 py-2 text-xs font-medium text-amber-100 hover:bg-amber-900/35 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Email reset code
+                          </button>
+                          <input
+                            className="min-w-[6rem] flex-1 rounded-lg border border-amber-500/20 bg-black/40 px-2 py-2 text-xs text-amber-100"
+                            placeholder="Code from email"
+                            value={resetCode}
+                            onChange={(e) => onResetCodeChange(e.target.value)}
+                          />
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <input
+                            className="min-w-[8rem] flex-1 rounded-lg border border-amber-500/20 bg-black/40 px-2 py-2 text-xs text-amber-100"
+                            placeholder="New password"
+                            type="password"
+                            value={newPassword}
+                            onChange={(e) => onNewPasswordChange(e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            disabled={disableAuth}
+                            onClick={onResetPassword}
+                            className="rounded-lg border border-amber-500/35 bg-amber-950/30 px-3 py-2 text-xs font-medium text-amber-100 hover:bg-amber-900/35 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Set new password
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </details>
               </div>
-            </div>
+            )}
           </section>
 
           <section className="rounded-xl border border-amber-400/15 bg-black/30 p-4">
             <div className="mb-3 inline-flex items-center gap-2 text-amber-200">
               <KeyRound className="h-4 w-4" />
-              <span className="font-semibold">Room Access</span>
+              <span className="font-semibold">Room access</span>
             </div>
 
             <div className="space-y-3">
@@ -289,17 +349,17 @@ const LoginGatePage: React.FC<LoginGatePageProps> = ({
                   type="button"
                   disabled={disableAuth}
                   onClick={onJoinRoom}
-                  className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Join Room
+                  Join room
                 </button>
                 <button
                   type="button"
                   disabled={disableAuth}
                   onClick={onRefreshChat}
-                  className="rounded-lg bg-zinc-700 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg border border-zinc-500/40 bg-zinc-900/60 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800/70 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Refresh Chat
+                  Refresh chat
                 </button>
               </div>
 
@@ -307,9 +367,11 @@ const LoginGatePage: React.FC<LoginGatePageProps> = ({
                 Campaign: {campaignId ?? '-'} · Room: {roomId ?? '-'}
               </div>
 
-              <p className="inline-flex items-center gap-2 text-xs text-amber-300/70">
-                <ScrollText className="h-3.5 w-3.5" />
-                Join Room / Refresh Chat require <strong className="text-amber-200/90">Login</strong> first. API key prompt comes after this page.
+              <p className="flex flex-wrap items-start gap-2 text-xs leading-snug text-amber-300/70">
+                <ScrollText className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  Sign in first to join a room or refresh chat. The API key step comes on the next screen.
+                </span>
               </p>
             </div>
           </section>

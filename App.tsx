@@ -318,7 +318,7 @@ const App: React.FC = () => {
         setError(null);
         setAuthSuccessLine(
           result?.resendFallback
-            ? `Local dev: email did not reach your inbox. Your code ${result.devVerificationCode} is filled in below — tap Verify Email.`
+            ? `Mail did not reach your inbox (Resend often blocks @qq.com and similar until you verify a sending domain). Code ${result.devVerificationCode} is filled in — tap Verify Email. For real email: add a domain at resend.com/domains + set DND_FROM_EMAIL, or use QQ SMTP — see backend/EMAIL.md.`
             : `Registered. Code ${result.devVerificationCode} is filled in below (also emailed if delivery succeeded).`
         );
         return;
