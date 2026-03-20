@@ -11,14 +11,7 @@ Target category: Creative Storyteller (Gemini Live Agent Challenge)
 
 ### D&D Front Page
 
-![D&D Front Page](./update/image1.png)
-
-### New Images (3/16/2026)
-
-1. ![Image 1](./update/image1.png)
-2. ![Image 2](./update/image2.png)
-3. ![Image 3](./update/image3.png)
-4. ![Image 4](./update/image4.png)
+![D&D Front Page](./public/imageDandD-frontpage11.png)
 
 ### Table of Contents
 
@@ -35,6 +28,7 @@ Target category: Creative Storyteller (Gemini Live Agent Challenge)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [License](#license)
+- [Newly Added Features](#newly-added-features-post-readme-update)
 
 ## Features
 
@@ -115,7 +109,7 @@ npm run dev:local
 
 Open:
 
-- `http://127.0.0.1:3737/`
+- `http://127.0.0.1:5173/`
 
 ### Build
 
@@ -151,7 +145,7 @@ npm run dev:local
 
 Open:
 
-- `http://127.0.0.1:3737/`
+- `http://127.0.0.1:5173/`
 
 ### 3) Core test flow (3–5 minutes)
 
@@ -242,7 +236,7 @@ Deployment helpers:
 
 ## Troubleshooting
 
-- If local localhost behaves oddly, use `http://127.0.0.1:3737/`.
+- If local localhost behaves oddly, use `http://127.0.0.1:5173/`.
 - If the page looks blank/stale, hard refresh (Cmd + Shift + R).
 - Ensure `GEMINI_API_KEY` is set if story/image generation fails.
 - Keep keys out of Git.
@@ -466,7 +460,7 @@ Run locally (recommended)
 npm run dev:local
 Open:
 
-http://127.0.0.1:3737/
+http://127.0.0.1:5173/
 Build
 npm run build
 npm run preview
@@ -485,7 +479,7 @@ GEMINI_API_KEY=your_key_here
 npm run dev:local
 Open:
 
-http://127.0.0.1:3737/
+http://127.0.0.1:5173/
 3) Core test flow (3–5 minutes)
 Start with Demo Party (or create 2–4 players).
 Trigger one turn and confirm story text updates.
@@ -544,7 +538,7 @@ docs/competition-requirement-matrix.md
 docs/demo-checklist.md
 docs/live-adk-implementation-plan.md
 Troubleshooting
-If local localhost behaves oddly, use http://127.0.0.1:3737/.
+If local localhost behaves oddly, use http://127.0.0.1:5173/.
 If the page looks blank/stale, hard refresh (Cmd + Shift + R).
 Ensure GEMINI_API_KEY is set if story/image generation fails.
 Keep keys out of Git.
@@ -633,13 +627,11 @@ Contact
 Manage cookies
 Do not share my personal information
 ```
-
 </details>
 
 ## Newly Added Features (Post-README Update)
 
-The following capabilities were added after the original README draft and are now part of the current project:
-
+The following capabilities were added after the original README draft and are now part of the current project(3/16/2026):
 ### 1) User Account/Auth Module
 
 - Auth flow is: register account (`/api/auth/register`) -> send/confirm verification code (`/api/auth/send-verification`, `/api/auth/verify-email`) -> login (`/api/auth/login`) to receive a signed Bearer token.
@@ -659,7 +651,13 @@ The following capabilities were added after the original README draft and are no
 - Intended to improve player immersion by personalizing character visuals beyond default generated art. Demo pictures are shown below.
 - Apps/APIs/services used: browser Camera API (`navigator.mediaDevices.getUserMedia`) for live capture, Canvas API for square crop/export, FileReader API for upload input, and Google Gemini API via `@google/genai` (`gemini-2.5-flash-image`) for image generation with identity-preserving prompts.
 
-![Face Swap 1](./public/1.png)
-![Face Swap 2](./public/2.png)
-![Face Swap 3](./public/3.png)
-![Face Swap 4](./public/4.png)
+<p align="center">
+  <img src="./public/1.png" alt="Face Swap 1" width="300">
+  <img src="./public/2.png" alt="Face Swap 2" width="300">
+</p>
+
+<p align="center">
+  <img src="./public/3.png" alt="Face Swap 3" width="300">
+  <img src="./public/4.png" alt="Face Swap 4" width="300">
+</p>
+
