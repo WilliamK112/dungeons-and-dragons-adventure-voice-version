@@ -1235,6 +1235,16 @@ app.listen(port, () => {
       console.log(
         '[email] SMTP configured — if Resend cannot reach a recipient, the server will try SMTP next (DND_EMAIL_PROVIDER=auto).'
       );
+      const sp = process.env.DND_SMTP_PASS ?? '';
+      if (
+        sp === '' ||
+        /PASTE_QQ_SMTP_AUTHORIZATION_CODE_HERE/i.test(sp) ||
+        /^your[-_]?smtp/i.test(sp)
+      ) {
+        console.warn(
+          '[email] DND_SMTP_PASS is empty or still a placeholder — replace it with the SMTP authorization code from QQ Mail (Settings → Account), then restart.'
+        );
+      }
     }
   } else {
     console.warn(
