@@ -28,6 +28,8 @@ This backend is the Google Cloud deployment path for Gemini Live Agent Challenge
 
 Copy `backend/.env.example` → `backend/.env` and set at least `RESEND_API_KEY` (real email) and `DND_APP_SECRET` (any long random string). SQLite defaults to `backend/dnd-local.sqlite` next to `server.mjs` unless `DND_DB_PATH` is set.
 
+**So every new user receives verification email:** follow **`EMAIL-SETUP-ALL-USERS.md`** (Resend + optional SMTP for addresses Resend test mode blocks). **`EMAIL.md`** has provider-specific troubleshooting.
+
 ```bash
 cd backend
 npm install

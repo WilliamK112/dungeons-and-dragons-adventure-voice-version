@@ -1,5 +1,7 @@
 # Real email (verification & password reset)
 
+**Quick checklist (all signups):** see **`EMAIL-SETUP-ALL-USERS.md`**.
+
 This app is designed so users **enter their own email** and **receive a real verification code** in that inbox. That only works when the backend can send outbound email.
 
 **Without `RESEND_API_KEY`**, the backend **does not send real email** — it only logs `[EMAIL-FALLBACK]` in the server terminal (fine for dev, not OK for real users).
