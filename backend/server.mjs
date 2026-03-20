@@ -1,10 +1,15 @@
-import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import crypto from 'node:crypto';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, '.env') });
 import Database from 'better-sqlite3';
 import { GoogleGenAI, Modality } from '@google/genai';
+import nodemailer from 'nodemailer';
 
 const app = express();
 const port = process.env.PORT || 8080;
@@ -13,7 +18,7 @@ app.use(cors());
 app.use(express.json({ limit: '4mb' }));
 
 // --- Local DB bootstrap (SQLite) ---
-const dbPath = process.env.DND_DB_PATH || path.resolve(process.cwd(), 'dnd-local.sqlite');
+const dbPath = process.env.DND_DB_PATH || path.join(__dirname, 'dnd-local.sqlite');
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 
@@ -151,6 +156,16 @@ function initDb() {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS magic_login_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nonce TEXT UNIQUE NOT NULL,
+      user_id INTEGER NOT NULL,
+      expires_at TEXT NOT NULL,
+      used INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_campaign_user ON campaigns(user_id);
     CREATE INDEX IF NOT EXISTS idx_turn_campaign ON turn_logs(campaign_id, turn_number);
     CREATE INDEX IF NOT EXISTS idx_chat_room ON chat_messages(room_id, id DESC);
@@ -164,6 +179,7 @@ function initDb() {
   }
   db.exec('CREATE INDEX IF NOT EXISTS idx_verify_email ON email_verification_codes(email, created_at DESC)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_reset_email ON password_reset_codes(email, created_at DESC)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_magic_nonce ON magic_login_tokens(nonce)');
 }
 initDb();
 
@@ -171,6 +187,7 @@ initDb();
 const APP_SECRET = process.env.DND_APP_SECRET || 'local-dev-secret-change-me';
 const TOKEN_TTL_SEC = 60 * 60 * 24 * 7;
 const CODE_TTL_MIN = Number(process.env.DND_CODE_TTL_MIN || 15);
+const MAGIC_LINK_TTL_MIN = Number(process.env.DND_MAGIC_LINK_TTL_MIN || 15);
 
 function genNumericCode(length = 6) {
   return Array.from({ length }, () => Math.floor(Math.random() * 10)).join('');
@@ -180,29 +197,256 @@ function nowIsoPlusMinutes(mins) {
   return new Date(Date.now() + mins * 60 * 1000).toISOString();
 }
 
-async function sendSystemEmail({ to, subject, text }) {
-  const resendKey = process.env.RESEND_API_KEY;
-  const from = process.env.DND_FROM_EMAIL || 'noreply@local.dnd';
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
-  if (resendKey) {
+function hrefAttr(url) {
+  return String(url).replace(/&/g, '&amp;');
+}
+
+function htmlVerificationEmail(code, ttlMin) {
+  const c = escapeHtml(code);
+  return `<!DOCTYPE html><html><body style="font-family:system-ui,Segoe UI,sans-serif;line-height:1.5;color:#1a1a1a;max-width:480px;margin:0 auto;padding:16px">
+<p style="margin:0 0 8px">Your verification code:</p>
+<p style="font-size:28px;font-weight:700;letter-spacing:6px;margin:12px 0">${c}</p>
+<p style="color:#666;font-size:14px;margin:0">Expires in ${ttlMin} minutes.</p>
+</body></html>`;
+}
+
+function htmlPasswordResetEmail(code, ttlMin) {
+  const c = escapeHtml(code);
+  return `<!DOCTYPE html><html><body style="font-family:system-ui,Segoe UI,sans-serif;line-height:1.5;color:#1a1a1a;max-width:480px;margin:0 auto;padding:16px">
+<p style="margin:0 0 8px">Your password reset code:</p>
+<p style="font-size:28px;font-weight:700;letter-spacing:6px;margin:12px 0">${c}</p>
+<p style="color:#666;font-size:14px;margin:0">Expires in ${ttlMin} minutes.</p>
+</body></html>`;
+}
+
+function htmlMagicLinkEmail(link, userEmail, userName, ttlMin) {
+  const e = escapeHtml(userEmail);
+  const n = escapeHtml(userName);
+  const h = hrefAttr(link);
+  return `<!DOCTYPE html><html><body style="font-family:system-ui,Segoe UI,sans-serif;line-height:1.5;color:#1a1a1a;max-width:520px;margin:0 auto;padding:16px">
+<p style="margin:0 0 8px">This email is already registered.</p>
+<p style="margin:0 0 16px;color:#444;font-size:14px">${e} · ${n}</p>
+<p style="margin:0 0 12px">Open once to sign in (we never send your password by email):</p>
+<p style="margin:16px 0"><a href="${h}" style="display:inline-block;background:#b45309;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600">Sign in to Chronicles</a></p>
+<p style="color:#666;font-size:13px;margin:16px 0 0">Or copy this link:<br/><span style="word-break:break-all;font-size:12px">${escapeHtml(link)}</span></p>
+<p style="color:#666;font-size:13px;margin:12px 0 0">Expires in ${ttlMin} minutes.</p>
+</body></html>`;
+}
+
+/** Optional SMTP — use with a real From address so any recipient can receive codes when Resend test mode blocks them. */
+function createSmtpTransport() {
+  try {
+    const url = process.env.DND_SMTP_URL?.trim();
+    if (url) {
+      return nodemailer.createTransport(url);
+    }
+    const host = process.env.DND_SMTP_HOST?.trim();
+    if (!host) return null;
+    const port = Number(process.env.DND_SMTP_PORT || 587);
+    const secure = process.env.DND_SMTP_SECURE === '1' || port === 465;
+    const user = process.env.DND_SMTP_USER;
+    const pass = process.env.DND_SMTP_PASS ?? '';
+    return nodemailer.createTransport({
+      host,
+      port,
+      secure,
+      auth: user != null && user !== '' ? { user, pass } : undefined,
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function sendViaSmtp({ to, subject, text, html }) {
+  const transport = createSmtpTransport();
+  if (!transport) return { ok: false, reason: 'no_transport' };
+  const from = process.env.DND_SMTP_FROM?.trim() || process.env.DND_FROM_EMAIL?.trim();
+  if (!from) return { ok: false, reason: 'no_from' };
+  try {
+    await transport.sendMail({
+      from,
+      to,
+      subject,
+      text,
+      html: html || undefined,
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, detail: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+async function sendViaResend({ to, subject, text, html, from }) {
+  const resendKey = process.env.RESEND_API_KEY;
+  if (!resendKey) return { ok: false, reason: 'no_key' };
+  const body = { from, to, subject, text };
+  if (html) body.html = html;
+  try {
     const resp = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${resendKey}`,
       },
-      body: JSON.stringify({ from, to, subject, text }),
+      body: JSON.stringify(body),
     });
-    if (!resp.ok) {
-      const err = await resp.text();
-      throw new Error(`Email send failed: ${err}`);
+    if (resp.ok) return { ok: true };
+
+    const raw = await resp.text();
+    let detail = raw;
+    try {
+      const j = JSON.parse(raw);
+      detail = j.message || j.name || raw;
+    } catch {
+      /* keep raw */
     }
-    return { provider: 'resend' };
+    return { ok: false, status: resp.status, detail };
+  } catch (e) {
+    return { ok: false, status: 0, detail: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** When Resend rejects (403 recipient / etc.), log the same content to the server console instead of failing the request. */
+function resendConsoleFallbackAllowed() {
+  if (process.env.DND_EMAIL_FALLBACK_ON_RESEND_ERROR === '1') return true;
+  if (process.env.DND_EMAIL_FALLBACK_ON_RESEND_ERROR === '0') return false;
+  return process.env.NODE_ENV !== 'production';
+}
+
+function httpStatusAllowsResendFallback(status) {
+  return status === 403 || status === 422 || status === 429;
+}
+
+function logEmailFallback(to, subject, text, reason, detail) {
+  console.warn('[email] Using console fallback —', reason, detail ? String(detail).slice(0, 500) : '');
+  console.log('[EMAIL-FALLBACK]', { to, subject, text });
+}
+
+function emailApiFields(mailResult) {
+  const o = { emailDelivery: mailResult.provider };
+  if (mailResult.resendFallback) o.resendFallback = true;
+  if (mailResult.deliveredViaSmtpFallback) o.deliveredViaSmtpFallback = true;
+  return o;
+}
+
+/** When DND_DEV_EXPOSE_CODE_IN_API=1 and not production, include codes/links in JSON so local dev works without inbox access. Never enable in production. */
+function devExposeVerificationCode(code) {
+  if (process.env.NODE_ENV === 'production') return {};
+  if (process.env.DND_DEV_EXPOSE_CODE_IN_API !== '1') return {};
+  return { devVerificationCode: String(code), devExpose: true };
+}
+
+function devExposeMagicLinkUrl(link) {
+  if (process.env.NODE_ENV === 'production') return {};
+  if (process.env.DND_DEV_EXPOSE_CODE_IN_API !== '1') return {};
+  return { devMagicLinkUrl: String(link), devExpose: true };
+}
+
+function formatResendFailureError(rr) {
+  let msg = `Email send failed (${rr.status ?? '??'}): ${rr.detail}`;
+  if (
+    rr.status === 403 &&
+    /verify a domain|only send testing emails|testing emails to your own email/i.test(String(rr.detail))
+  ) {
+    msg +=
+      ' [Fix: verify a domain at resend.com/domains + DND_FROM_EMAIL, configure SMTP (DND_SMTP_*), or set DND_EMAIL_FALLBACK_ON_RESEND_ERROR=1.]';
+  }
+  return msg;
+}
+
+async function sendSystemEmail({ to, subject, text, html }) {
+  const mode = (process.env.DND_EMAIL_PROVIDER || 'auto').toLowerCase();
+  const resendKey = process.env.RESEND_API_KEY;
+  const fromResend =
+    process.env.DND_FROM_EMAIL ||
+    (resendKey ? 'onboarding@resend.dev' : 'noreply@local.dnd');
+  const smtpReady = !!createSmtpTransport();
+
+  if (mode === 'smtp') {
+    const r = await sendViaSmtp({ to, subject, text, html });
+    if (r.ok) return { provider: 'smtp' };
+    logEmailFallback(to, subject, text, 'SMTP mode failed', r.detail || r.reason);
+    if (resendConsoleFallbackAllowed()) {
+      return { provider: 'console', resendFallback: true };
+    }
+    throw new Error(
+      r.reason === 'no_from'
+        ? 'Set DND_SMTP_FROM or DND_FROM_EMAIL for SMTP'
+        : `SMTP failed: ${r.detail || r.reason || 'unknown'}`
+    );
   }
 
-  // Local fallback: log only (dev mode)
-  console.log('[EMAIL-FALLBACK]', { to, subject, text });
-  return { provider: 'console' };
+  if (!resendKey) {
+    if (smtpReady) {
+      const r = await sendViaSmtp({ to, subject, text, html });
+      if (r.ok) return { provider: 'smtp' };
+      console.warn('[email] SMTP failed without Resend:', r.detail || r.reason);
+    }
+    logEmailFallback(to, subject, text, 'no RESEND_API_KEY');
+    return { provider: 'console' };
+  }
+
+  if (mode === 'resend') {
+    const rr = await sendViaResend({ to, subject, text, html, from: fromResend });
+    if (rr.ok) return { provider: 'resend' };
+    if (smtpReady && (!rr.status || rr.status === 403 || rr.status === 422 || rr.status === 429)) {
+      const sr = await sendViaSmtp({ to, subject, text, html });
+      if (sr.ok) {
+        console.warn('[email] Delivered via SMTP (Resend-only mode had HTTP error)');
+        return { provider: 'smtp', deliveredViaSmtpFallback: true };
+      }
+    }
+    if (resendConsoleFallbackAllowed() && httpStatusAllowsResendFallback(rr.status)) {
+      logEmailFallback(to, subject, text, `Resend HTTP ${rr.status}`, rr.detail);
+      return { provider: 'console', resendFallback: true, resendHttpStatus: rr.status };
+    }
+    throw new Error(formatResendFailureError(rr));
+  }
+
+  try {
+    const rr = await sendViaResend({ to, subject, text, html, from: fromResend });
+    if (rr.ok) return { provider: 'resend' };
+
+    if (smtpReady && mode === 'auto') {
+      const sr = await sendViaSmtp({ to, subject, text, html });
+      if (sr.ok) {
+        console.warn('[email] Delivered via SMTP (Resend was not ok):', rr.status, String(rr.detail).slice(0, 200));
+        return { provider: 'smtp', deliveredViaSmtpFallback: true };
+      }
+      console.warn('[email] SMTP fallback after Resend failure also failed:', sr.detail || sr.reason);
+    }
+
+    if (resendConsoleFallbackAllowed() && httpStatusAllowsResendFallback(rr.status)) {
+      logEmailFallback(to, subject, text, `Resend HTTP ${rr.status}`, rr.detail);
+      return { provider: 'console', resendFallback: true, resendHttpStatus: rr.status };
+    }
+
+    throw new Error(formatResendFailureError(rr));
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith('Email send failed')) {
+      throw e;
+    }
+    if (smtpReady && mode === 'auto') {
+      const sr = await sendViaSmtp({ to, subject, text, html });
+      if (sr.ok) {
+        console.warn('[email] Delivered via SMTP after Resend network error');
+        return { provider: 'smtp', deliveredViaSmtpFallback: true };
+      }
+    }
+    if (resendConsoleFallbackAllowed()) {
+      logEmailFallback(to, subject, text, 'Resend request error', e instanceof Error ? e.message : e);
+      return { provider: 'console', resendFallback: true, resendHttpStatus: 'network' };
+    }
+    throw e instanceof Error ? e : new Error(String(e));
+  }
 }
 
 function hashPassword(password) {
@@ -250,6 +494,37 @@ app.get('/health', (_req, res) => {
   res.json({ ok: true, service: 'dnd-gemini-backend', dbPath, timestamp: new Date().toISOString() });
 });
 
+/** Public: lets the SPA show whether real email + magic-link base URL are configured (no secrets). */
+app.get('/api/auth/status', (_req, res) => {
+  const resendOn = !!process.env.RESEND_API_KEY;
+  const fromAddr = process.env.DND_FROM_EMAIL || (resendOn ? 'onboarding@resend.dev' : null);
+  const publicAppUrl = (process.env.DND_PUBLIC_APP_URL || 'http://localhost:5173').replace(/\/$/, '');
+  const usingDefaultAppSecret =
+    !process.env.DND_APP_SECRET || process.env.DND_APP_SECRET === 'local-dev-secret-change-me';
+  const smtpOn = !!createSmtpTransport();
+  res.json({
+    ok: true,
+    email: {
+      resend: resendOn,
+      smtp: smtpOn,
+      providerMode: process.env.DND_EMAIL_PROVIDER || 'auto',
+      from: fromAddr,
+      publicAppUrl,
+      codeTtlMin: CODE_TTL_MIN,
+      magicLinkTtlMin: MAGIC_LINK_TTL_MIN,
+      resendConsoleFallbackOnError: resendConsoleFallbackAllowed(),
+      devExposeCodeInApi:
+        process.env.NODE_ENV !== 'production' && process.env.DND_DEV_EXPOSE_CODE_IN_API === '1',
+    },
+    security: {
+      usingDefaultAppSecret,
+      ...(process.env.NODE_ENV === 'production' && usingDefaultAppSecret
+        ? { productionWarning: 'Set a strong DND_APP_SECRET' }
+        : {}),
+    },
+  });
+});
+
 // --- Auth APIs ---
 app.post('/api/auth/register', async (req, res) => {
   try {
@@ -261,15 +536,66 @@ app.post('/api/auth/register', async (req, res) => {
 
     const code = genNumericCode(6);
     db.prepare('INSERT INTO email_verification_codes (email, code, expires_at, used) VALUES (?, ?, ?, 0)').run(normalizedEmail, code, nowIsoPlusMinutes(CODE_TTL_MIN));
-    await sendSystemEmail({
+    const mailResult = await sendSystemEmail({
       to: normalizedEmail,
       subject: 'Your D&D verification code',
       text: `Your verification code is: ${code}. It expires in ${CODE_TTL_MIN} minutes.`,
+      html: htmlVerificationEmail(code, CODE_TTL_MIN),
     });
 
-    return res.json({ ok: true, userId: result.lastInsertRowid, verificationSent: true });
+    return res.json({
+      ok: true,
+      userId: result.lastInsertRowid,
+      verificationSent: true,
+      ...emailApiFields(mailResult),
+      ...devExposeVerificationCode(code),
+    });
   } catch (e) {
-    return res.status(400).json({ ok: false, error: e.message.includes('UNIQUE') ? 'Email already exists' : e.message });
+    const msg = String(e?.message || e);
+    if (!msg.includes('UNIQUE')) {
+      return res.status(400).json({ ok: false, error: msg });
+    }
+    try {
+      const normalizedEmail = String(req.body?.email || '').toLowerCase().trim();
+      const user = db.prepare('SELECT id, email, name FROM users WHERE email = ?').get(normalizedEmail);
+      if (!user) {
+        return res.status(400).json({ ok: false, error: 'Email already exists' });
+      }
+      const nonce = crypto.randomBytes(24).toString('base64url');
+      const expSec = Math.floor(Date.now() / 1000) + MAGIC_LINK_TTL_MIN * 60;
+      db.prepare('INSERT INTO magic_login_tokens (nonce, user_id, expires_at, used) VALUES (?, ?, ?, 0)').run(
+        nonce,
+        user.id,
+        nowIsoPlusMinutes(MAGIC_LINK_TTL_MIN)
+      );
+      const magicToken = signToken({
+        typ: 'magic',
+        nonce,
+        userId: user.id,
+        email: user.email,
+        exp: expSec,
+      });
+      const base = (process.env.DND_PUBLIC_APP_URL || 'http://localhost:5173').replace(/\/$/, '');
+      const link = `${base}/#magic=${encodeURIComponent(magicToken)}`;
+      const mailResult = await sendSystemEmail({
+        to: normalizedEmail,
+        subject: 'Your D&D sign-in link',
+        text:
+          `This email is already registered (${user.email}; name on file: ${user.name}).\n\n` +
+          `Open this link once to sign in. We never send your password by email.\n${link}\n\n` +
+          `This link expires in ${MAGIC_LINK_TTL_MIN} minutes. If you did not try to register again, ignore this email.\n\n` +
+          `You can also use Login with your existing password.`,
+        html: htmlMagicLinkEmail(link, user.email, user.name, MAGIC_LINK_TTL_MIN),
+      });
+      return res.json({
+        ok: true,
+        existingAccount: true,
+        magicLinkSent: true,
+        ...emailApiFields(mailResult),
+      });
+    } catch (inner) {
+      return res.status(500).json({ ok: false, error: inner.message || 'Failed to send sign-in link' });
+    }
   }
 });
 
@@ -283,12 +609,18 @@ app.post('/api/auth/send-verification', async (req, res) => {
 
     const code = genNumericCode(6);
     db.prepare('INSERT INTO email_verification_codes (email, code, expires_at, used) VALUES (?, ?, ?, 0)').run(normalizedEmail, code, nowIsoPlusMinutes(CODE_TTL_MIN));
-    await sendSystemEmail({
+    const mailResult = await sendSystemEmail({
       to: normalizedEmail,
       subject: 'Your D&D verification code',
       text: `Your verification code is: ${code}. It expires in ${CODE_TTL_MIN} minutes.`,
+      html: htmlVerificationEmail(code, CODE_TTL_MIN),
     });
-    return res.json({ ok: true, verificationSent: true });
+    return res.json({
+      ok: true,
+      verificationSent: true,
+      ...emailApiFields(mailResult),
+      ...devExposeVerificationCode(code),
+    });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message || 'Failed to send verification code' });
   }
@@ -311,22 +643,57 @@ app.post('/api/auth/verify-email', (req, res) => {
   return res.json({ ok: true, verified: true });
 });
 
+app.post('/api/auth/magic-link/consume', (req, res) => {
+  try {
+    const { token } = req.body || {};
+    if (!token) return res.status(400).json({ ok: false, error: 'token required' });
+    const payload = verifyToken(token);
+    if (!payload || payload.typ !== 'magic' || !payload.nonce || !payload.userId) {
+      return res.status(400).json({ ok: false, error: 'Invalid or expired link' });
+    }
+    const row = db.prepare('SELECT id, user_id, expires_at FROM magic_login_tokens WHERE nonce = ? AND used = 0').get(payload.nonce);
+    if (!row || row.user_id !== payload.userId) {
+      return res.status(400).json({ ok: false, error: 'Invalid or expired link' });
+    }
+    if (new Date(row.expires_at).getTime() < Date.now()) {
+      return res.status(400).json({ ok: false, error: 'Link expired' });
+    }
+    const user = db.prepare('SELECT id, email, name FROM users WHERE id = ?').get(row.user_id);
+    if (!user) return res.status(400).json({ ok: false, error: 'User not found' });
+    db.prepare('UPDATE magic_login_tokens SET used = 1 WHERE id = ?').run(row.id);
+    db.prepare('UPDATE users SET is_verified = 1 WHERE id = ?').run(user.id);
+    const now = Math.floor(Date.now() / 1000);
+    const sessionToken = signToken({ userId: user.id, email: user.email, name: user.name, iat: now, exp: now + TOKEN_TTL_SEC });
+    return res.json({ ok: true, token: sessionToken, user: { id: user.id, email: user.email, name: user.name } });
+  } catch (e) {
+    return res.status(400).json({ ok: false, error: e.message || 'Invalid link' });
+  }
+});
+
 app.post('/api/auth/forgot-password', async (req, res) => {
   try {
     const { email } = req.body || {};
     if (!email) return res.status(400).json({ ok: false, error: 'email required' });
     const normalizedEmail = String(email).toLowerCase().trim();
     const user = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
-    if (!user) return res.json({ ok: true, sent: true }); // avoid account enumeration
+    if (!user) {
+      return res.json({ ok: true, sent: true, emailDelivery: 'skipped_no_user' });
+    }
 
     const code = genNumericCode(6);
     db.prepare('INSERT INTO password_reset_codes (email, code, expires_at, used) VALUES (?, ?, ?, 0)').run(normalizedEmail, code, nowIsoPlusMinutes(CODE_TTL_MIN));
-    await sendSystemEmail({
+    const mailResult = await sendSystemEmail({
       to: normalizedEmail,
       subject: 'Your D&D password reset code',
       text: `Your password reset code is: ${code}. It expires in ${CODE_TTL_MIN} minutes.`,
+      html: htmlPasswordResetEmail(code, CODE_TTL_MIN),
     });
-    return res.json({ ok: true, sent: true });
+    return res.json({
+      ok: true,
+      sent: true,
+      ...emailApiFields(mailResult),
+      ...devExposeVerificationCode(code),
+    });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message || 'Failed to send reset code' });
   }
@@ -849,4 +1216,34 @@ app.post('/api/tts', async (req, res) => {
 
 app.listen(port, () => {
   console.log(`dnd-gemini-backend listening on :${port}`);
+  console.log(`[db] ${dbPath}`);
+  const publicAppUrl = (process.env.DND_PUBLIC_APP_URL || 'http://localhost:5173').replace(/\/$/, '');
+  console.log(`[app] Magic-link base URL: ${publicAppUrl} (set DND_PUBLIC_APP_URL for production)`);
+  if (process.env.RESEND_API_KEY) {
+    const fromAddr = process.env.DND_FROM_EMAIL || 'onboarding@resend.dev';
+    console.log(`[email] Resend ENABLED — real messages to user inboxes (from: ${fromAddr})`);
+    if (resendConsoleFallbackAllowed()) {
+      console.log(
+        '[email] If Resend rejects a recipient (403/422/429), falling back to console [EMAIL-FALLBACK] instead of failing (non-production, or DND_EMAIL_FALLBACK_ON_RESEND_ERROR=1).'
+      );
+    } else {
+      console.warn(
+        '[email] Production mode: Resend errors will fail the request. Set DND_EMAIL_FALLBACK_ON_RESEND_ERROR=1 to log codes instead, or verify your domain + DND_FROM_EMAIL.'
+      );
+    }
+    if (createSmtpTransport()) {
+      console.log(
+        '[email] SMTP configured — if Resend cannot reach a recipient, the server will try SMTP next (DND_EMAIL_PROVIDER=auto).'
+      );
+    }
+  } else {
+    console.warn(
+      '[email] Resend NOT configured (missing RESEND_API_KEY in backend/.env). Verification codes only appear in logs as [EMAIL-FALLBACK]. See backend/EMAIL.md'
+    );
+  }
+  const usingDefaultSecret =
+    !process.env.DND_APP_SECRET || process.env.DND_APP_SECRET === 'local-dev-secret-change-me';
+  if (process.env.NODE_ENV === 'production' && usingDefaultSecret) {
+    console.warn('[security] DND_APP_SECRET is default — set a strong random secret in production.');
+  }
 });

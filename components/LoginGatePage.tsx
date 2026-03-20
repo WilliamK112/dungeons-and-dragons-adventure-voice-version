@@ -2,7 +2,25 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { KeyRound, Zap, ScrollText } from 'lucide-react';
 
+export type MailServerStatus =
+  | { loading: true }
+  | { loading: false; error: string }
+  | {
+      loading: false;
+      resend: boolean;
+      smtp: boolean;
+      providerMode: string;
+      publicAppUrl: string;
+      codeTtlMin: number;
+      magicLinkTtlMin: number;
+      usingDefaultAppSecret: boolean;
+      /** If Resend returns 403 etc., dev server logs [EMAIL-FALLBACK] instead of failing. */
+      resendConsoleFallbackOnError: boolean;
+      devExposeCodeInApi: boolean;
+    };
+
 interface LoginGatePageProps {
+  mailStatus?: MailServerStatus;
   email: string;
   name: string;
   password: string;
@@ -28,9 +46,14 @@ interface LoginGatePageProps {
   onQuickStart: () => void;
   onJoinRoom: () => void;
   onRefreshChat: () => void;
+  /** Shown inside the card so login errors are not lost below the fold */
+  authError?: string | null;
+  authSuccess?: string | null;
+  isAuthBusy?: boolean;
 }
 
 const LoginGatePage: React.FC<LoginGatePageProps> = ({
+  mailStatus,
   email,
   name,
   password,
@@ -56,7 +79,12 @@ const LoginGatePage: React.FC<LoginGatePageProps> = ({
   onQuickStart,
   onJoinRoom,
   onRefreshChat,
+  authError,
+  authSuccess,
+  isAuthBusy = false,
 }) => {
+  const disableAuth = isAuthBusy;
+
   return (
     <motion.div
       initial={{ opacity: 1, y: 0 }}
@@ -69,6 +97,77 @@ const LoginGatePage: React.FC<LoginGatePageProps> = ({
 
         <div className="relative grid gap-6 p-6 md:grid-cols-2 md:p-8">
           <section>
+            {mailStatus?.loading ? (
+              <p className="mb-3 rounded-lg border border-amber-500/20 bg-slate-900/50 px-3 py-2 text-xs text-amber-200/70">Checking email server…</p>
+            ) : null}
+            {!mailStatus?.loading && mailStatus && 'error' in mailStatus ? (
+              <p className="mb-3 rounded-lg border border-rose-500/30 bg-rose-950/40 px-3 py-2 text-xs text-rose-200/90">
+                Cannot reach the API — start the backend (<code className="rounded bg-black/40 px-1">cd backend && npm run dev</code>) and keep the Vite dev server running.
+              </p>
+            ) : null}
+            {mailStatus?.loading === false && mailStatus && 'resend' in mailStatus ? (
+              <div
+                className={`mb-3 rounded-lg border px-3 py-2 text-xs ${
+                  mailStatus.resend
+                    ? 'border-emerald-500/30 bg-emerald-950/35 text-emerald-100/90'
+                    : 'border-amber-500/30 bg-amber-950/30 text-amber-100/85'
+                }`}
+              >
+                {mailStatus.resend || mailStatus.smtp ? (
+                  <>
+                    <strong className="text-emerald-200/95">Outbound mail</strong> —{' '}
+                    {[
+                      mailStatus.resend && 'Resend API',
+                      mailStatus.smtp && (mailStatus.resend ? 'SMTP (backup if Resend blocks recipient)' : 'SMTP'),
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                    {' '}
+                    · <code className="rounded bg-black/40 px-1">{mailStatus.providerMode}</code>. Magic links:{' '}
+                    <span className="break-all opacity-90">{mailStatus.publicAppUrl}</span> · codes ~{mailStatus.codeTtlMin}m.
+                    {mailStatus.resendConsoleFallbackOnError ? (
+                      <span className="mt-1 block text-[10px] text-emerald-100/75">
+                        If both providers fail in dev, your code/link is logged as <code className="rounded bg-black/40 px-1">[EMAIL-FALLBACK]</code>.
+                      </span>
+                    ) : null}
+                    {mailStatus.devExposeCodeInApi ? (
+                      <span className="mt-1 block text-[10px] text-emerald-100/80">
+                        Dev API exposure on — codes can appear in the green message after Send Code (DND_DEV_EXPOSE_CODE_IN_API).
+                      </span>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <strong className="text-amber-200/95">Dev mode</strong> — no <code className="rounded bg-black/40 px-1">RESEND_API_KEY</code>: codes only in the backend terminal (
+                    <code className="rounded bg-black/40 px-1">[EMAIL-FALLBACK]</code>).
+                  </>
+                )}
+                {mailStatus.usingDefaultAppSecret ? (
+                  <span className="mt-1 block text-[10px] text-amber-200/55">Using default app secret — set DND_APP_SECRET before production.</span>
+                ) : null}
+              </div>
+            ) : null}
+            {authError ? (
+              <div
+                role="alert"
+                className="mb-3 rounded-lg border border-rose-500/45 bg-rose-950/50 px-3 py-2 text-sm text-rose-100"
+              >
+                {authError}
+              </div>
+            ) : null}
+            {authSuccess ? (
+              <div
+                role="status"
+                className="mb-3 rounded-lg border border-emerald-500/40 bg-emerald-950/40 px-3 py-2 text-sm text-emerald-100/95"
+              >
+                {authSuccess}
+              </div>
+            ) : null}
+            {isAuthBusy ? (
+              <p className="mb-2 text-xs font-medium text-amber-200/90" aria-live="polite">
+                Working…
+              </p>
+            ) : null}
             <p className="text-xs uppercase tracking-[0.25em] text-amber-300/70">Chronicles of Shadow</p>
             <h2 className="mt-2 text-3xl font-bold text-amber-100">Enter the Citadel</h2>
             <p className="mt-3 text-sm text-amber-100/70">Create an account to enable campaign saves, replay, and room chat. Or jump in instantly as a guest.</p>
@@ -95,31 +194,103 @@ const LoginGatePage: React.FC<LoginGatePageProps> = ({
               />
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button onClick={onRegister} className="rounded-lg bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600">Register</button>
-              <button onClick={onLogin} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600">Login</button>
-              <button onClick={onQuickStart} className="inline-flex items-center gap-2 rounded-lg border border-violet-400/35 bg-violet-900/35 px-4 py-2 text-sm font-semibold text-violet-100 hover:bg-violet-800/40">
-                <Zap className="h-4 w-4" />
-                Quick Start
+            <div className="mt-4 flex flex-wrap items-end gap-2">
+              <button
+                type="button"
+                disabled={disableAuth}
+                onClick={onRegister}
+                className="rounded-lg bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Register
               </button>
+              <button
+                type="button"
+                disabled={disableAuth}
+                onClick={onLogin}
+                className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Login
+              </button>
+              <div className="quickstart-cta-wrap">
+                <span className="quickstart-cta-label" aria-hidden>
+                  Click me
+                </span>
+                <button
+                  type="button"
+                  disabled={disableAuth}
+                  onClick={onQuickStart}
+                  title="Try the demo instantly — no signup required"
+                  aria-label="Quick Start: try the demo instantly"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-violet-400/35 bg-violet-900/35 px-4 py-2 text-sm font-semibold text-violet-100 hover:bg-violet-800/40 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Zap className="h-4 w-4 shrink-0" />
+                  Quick Start
+                </button>
+              </div>
             </div>
 
             <div className="mt-4 rounded-lg border border-amber-500/20 bg-slate-900/40 p-3">
               <p className="mb-2 text-xs uppercase tracking-wider text-amber-300/80">Email Verification</p>
-              <div className="flex flex-wrap gap-2">
-                <button onClick={onSendVerificationCode} className="rounded bg-blue-700 px-3 py-1 text-xs text-white hover:bg-blue-600">Send Code</button>
-                <input className="rounded bg-black/40 px-2 py-1 text-xs text-amber-100" placeholder="verification code" value={verificationCode} onChange={(e) => onVerificationCodeChange(e.target.value)} />
-                <button onClick={onVerifyEmail} className="rounded bg-cyan-700 px-3 py-1 text-xs text-white hover:bg-cyan-600">Verify Email</button>
+              <p className="mb-2 text-[11px] text-amber-200/55">
+                New accounts: paste the 6-digit code from your email. If you try to register again with an email that already exists, we send a one-time sign-in link instead (no password in email).
+              </p>
+              <input
+                type="email"
+                autoComplete="email"
+                className="mb-2 w-full rounded-lg border border-amber-400/25 bg-black/50 px-3 py-2 text-sm text-amber-100 placeholder:text-amber-200/40"
+                placeholder="Email address"
+                value={email}
+                onChange={(e) => onEmailChange(e.target.value)}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={disableAuth}
+                  onClick={onSendVerificationCode}
+                  className="rounded bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Send Code
+                </button>
+                <input
+                  className="min-w-[8rem] flex-1 rounded border border-amber-500/20 bg-black/40 px-2 py-1.5 text-xs text-amber-100 placeholder:text-amber-200/35"
+                  placeholder="6-digit code from email"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={verificationCode}
+                  onChange={(e) => onVerificationCodeChange(e.target.value)}
+                />
+                <button
+                  type="button"
+                  disabled={disableAuth}
+                  onClick={onVerifyEmail}
+                  className="rounded bg-cyan-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Verify Email
+                </button>
               </div>
             </div>
 
             <div className="mt-3 rounded-lg border border-rose-400/20 bg-slate-900/40 p-3">
               <p className="mb-2 text-xs uppercase tracking-wider text-rose-300/80">Forgot Password</p>
               <div className="flex flex-wrap gap-2">
-                <button onClick={onForgotPassword} className="rounded bg-rose-700 px-3 py-1 text-xs text-white hover:bg-rose-600">Send Reset Code</button>
+                <button
+                  type="button"
+                  disabled={disableAuth}
+                  onClick={onForgotPassword}
+                  className="rounded bg-rose-700 px-3 py-1 text-xs text-white hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Send Reset Code
+                </button>
                 <input className="rounded bg-black/40 px-2 py-1 text-xs text-amber-100" placeholder="reset code" value={resetCode} onChange={(e) => onResetCodeChange(e.target.value)} />
                 <input className="rounded bg-black/40 px-2 py-1 text-xs text-amber-100" placeholder="new password" type="password" value={newPassword} onChange={(e) => onNewPasswordChange(e.target.value)} />
-                <button onClick={onResetPassword} className="rounded bg-fuchsia-700 px-3 py-1 text-xs text-white hover:bg-fuchsia-600">Reset Password</button>
+                <button
+                  type="button"
+                  disabled={disableAuth}
+                  onClick={onResetPassword}
+                  className="rounded bg-fuchsia-700 px-3 py-1 text-xs text-white hover:bg-fuchsia-600 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Reset Password
+                </button>
               </div>
             </div>
           </section>
@@ -139,8 +310,22 @@ const LoginGatePage: React.FC<LoginGatePageProps> = ({
               />
 
               <div className="flex flex-wrap gap-2">
-                <button onClick={onJoinRoom} className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600">Join Room</button>
-                <button onClick={onRefreshChat} className="rounded-lg bg-zinc-700 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-600">Refresh Chat</button>
+                <button
+                  type="button"
+                  disabled={disableAuth}
+                  onClick={onJoinRoom}
+                  className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Join Room
+                </button>
+                <button
+                  type="button"
+                  disabled={disableAuth}
+                  onClick={onRefreshChat}
+                  className="rounded-lg bg-zinc-700 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-600 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Refresh Chat
+                </button>
               </div>
 
               <div className="rounded-lg border border-amber-500/15 bg-slate-950/60 px-3 py-2 text-sm text-amber-100/85">
@@ -149,7 +334,7 @@ const LoginGatePage: React.FC<LoginGatePageProps> = ({
 
               <p className="inline-flex items-center gap-2 text-xs text-amber-300/70">
                 <ScrollText className="h-3.5 w-3.5" />
-                API key prompt comes after this page.
+                Join Room / Refresh Chat require <strong className="text-amber-200/90">Login</strong> first. API key prompt comes after this page.
               </p>
             </div>
           </section>

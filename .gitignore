@@ -27,6 +27,8 @@ dist-ssr
 # Env files
 .env
 .env.*
+!.env.example
+!backend/.env.example
 backend/.env
 
 # Local SQLite (dev databases — do not publish)

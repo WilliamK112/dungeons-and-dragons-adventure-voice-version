@@ -1,6 +1,7 @@
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { GameState, VideoPlan, Player, PlanningResponse } from '../types';
 import { GEMINI_MODEL, SYSTEM_INSTRUCTION, GAME_STATE_SCHEMA, VIDEO_PLAN_SCHEMA, PLANNING_SCHEMA } from '../constants';
+import { getBackendBaseUrl } from '../utils/backendUrl';
 
 // Resolve API key from runtime input first, then env fallbacks.
 function getRuntimeApiKey(): string | null {
@@ -25,18 +26,13 @@ function getAI() {
     return new GoogleGenAI({ apiKey });
 }
 
-function getBackendBaseUrl(): string | null {
-    const raw = (process.env.VITE_BACKEND_URL || '').trim();
-    return raw ? raw.replace(/\/$/, '') : null;
-}
-
 export const generateStoryNarrationAudio = async (
     text: string,
     opts?: { voice?: string; model?: string; format?: 'mp3' | 'wav'; instructions?: string; timeoutMs?: number; provider?: 'openai' | 'cosyvoice'; fallbackProvider?: 'openai' | 'cosyvoice' }
 ): Promise<string> => {
     const backendBaseUrl = getBackendBaseUrl();
-    if (!backendBaseUrl) {
-        throw new Error('TTS requires backend. Set VITE_BACKEND_URL in frontend env.');
+    if (!backendBaseUrl && import.meta.env.PROD) {
+        throw new Error('TTS requires backend. Set VITE_BACKEND_URL in the frontend env to your deployed API URL.');
     }
 
     const controller = new AbortController();

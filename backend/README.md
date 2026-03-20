@@ -5,7 +5,9 @@ This backend is the Google Cloud deployment path for Gemini Live Agent Challenge
 ## Endpoints
 
 - `GET /health` — service health check
-- `POST /api/auth/register` — user registration
+- `GET /api/auth/status` — public: Resend on/off, magic-link base URL, TTLs (for the login UI)
+- `POST /api/auth/register` — user registration (new users get a 6-digit code email; duplicate email gets a magic sign-in link)
+- `POST /api/auth/magic-link/consume` — exchange one-time magic-link token for session JWT
 - `POST /api/auth/login` — user login (returns Bearer token)
 - `POST /api/campaigns` — create campaign + initial state (auth)
 - `GET /api/campaigns` — list my campaigns (auth)
@@ -24,11 +26,15 @@ This backend is the Google Cloud deployment path for Gemini Live Agent Challenge
 
 ## Local run
 
+Copy `backend/.env.example` → `backend/.env` and set at least `RESEND_API_KEY` (real email) and `DND_APP_SECRET` (any long random string). SQLite defaults to `backend/dnd-local.sqlite` next to `server.mjs` unless `DND_DB_PATH` is set.
+
 ```bash
 cd backend
 npm install
-GEMINI_API_KEY=your_key_here OPENAI_API_KEY=your_openai_key_here COSYVOICE_BASE_URL=http://127.0.0.1:9880 TTS_PROVIDER=cosyvoice TTS_FALLBACK_PROVIDER=openai DND_APP_SECRET=change_me DND_DB_PATH=./dnd-local.sqlite npm run dev
+npm run dev
 ```
+
+See `EMAIL.md` for Resend and `DND_PUBLIC_APP_URL` (magic links must point at your real frontend in production).
 
 ## Quick auth test
 

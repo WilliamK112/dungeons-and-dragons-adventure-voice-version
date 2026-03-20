@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GameState, VideoPlan, Player, PlanningResponse } from './types';
 import * as geminiService from './services/geminiService';
 import PlayerStatsList from './components/PlayerStats';
@@ -6,7 +6,7 @@ import GameDisplay from './components/GameDisplay';
 import VideoPlanModal from './components/VideoPlanModal';
 import CharacterCreation, { PlayerData } from './components/CharacterCreation';
 import CoverPage from './components/CoverPage';
-import LoginGatePage from './components/LoginGatePage';
+import LoginGatePage, { MailServerStatus } from './components/LoginGatePage';
 import MusicPlayer from './components/MusicPlayer';
 import SuccessPage from './components/SuccessPage';
 import { motion, AnimatePresence } from 'motion/react';
@@ -17,8 +17,15 @@ import {
   advanceTurnAfterAction,
   getInitiativeQueue,
 } from './utils/turnOrder';
+import { getBackendBaseUrl } from './utils/backendUrl';
 import InitiativeQueue from './components/InitiativeQueue';
 import { DEMO_API_KEY } from './constants';
+
+/** True when the backend actually handed off mail to Resend or SMTP (not console fallback). */
+function deliveredToRealInbox(r: { emailDelivery?: string; resendFallback?: boolean }) {
+  if (!r?.emailDelivery || r.resendFallback) return false;
+  return r.emailDelivery === 'resend' || r.emailDelivery === 'smtp';
+}
 
 type ApiKeyStatus = 'missing' | 'looks-valid' | 'looks-invalid';
 
@@ -110,7 +117,86 @@ const App: React.FC = () => {
   const [roomMessages, setRoomMessages] = useState<any[]>([]);
   const [chatInput, setChatInput] = useState('');
 
-  const backendBaseUrl = ((process.env.VITE_BACKEND_URL || 'http://127.0.0.1:8080') as string).replace(/\/$/, '');
+  const backendBaseUrl = getBackendBaseUrl();
+  const [mailStatus, setMailStatus] = useState<MailServerStatus>({ loading: true });
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authSuccessLine, setAuthSuccessLine] = useState<string | null>(null);
+  const magicLinkHandled = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${backendBaseUrl}/api/auth/status`);
+        const d = await r.json();
+        if (cancelled) return;
+        if (!d?.ok) {
+          setMailStatus({ loading: false, error: 'status' });
+          return;
+        }
+        setMailStatus({
+          loading: false,
+          resend: !!d.email?.resend,
+          smtp: !!d.email?.smtp,
+          providerMode: String(d.email?.providerMode || 'auto'),
+          publicAppUrl: String(d.email?.publicAppUrl || 'http://localhost:5173'),
+          codeTtlMin: Number(d.email?.codeTtlMin) || 15,
+          magicLinkTtlMin: Number(d.email?.magicLinkTtlMin) || 15,
+          usingDefaultAppSecret: !!d.security?.usingDefaultAppSecret,
+          resendConsoleFallbackOnError: !!d.email?.resendConsoleFallbackOnError,
+          devExposeCodeInApi: !!d.email?.devExposeCodeInApi,
+        });
+      } catch {
+        if (!cancelled) setMailStatus({ loading: false, error: 'network' });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [backendBaseUrl]);
+
+  useEffect(() => {
+    if (magicLinkHandled.current || typeof window === 'undefined') return;
+    let raw = '';
+    const h = window.location.hash;
+    if (h.startsWith('#magic=')) {
+      raw = decodeURIComponent(h.slice('#magic='.length));
+    } else {
+      const q = new URLSearchParams(window.location.search).get('magic');
+      if (q) raw = decodeURIComponent(q);
+    }
+    if (!raw) return;
+    magicLinkHandled.current = true;
+    (async () => {
+      try {
+        const res = await fetch(`${backendBaseUrl}/api/auth/magic-link/consume`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: raw }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data?.ok === false) {
+          throw new Error(data?.error || `Request failed: ${res.status}`);
+        }
+        const token = data?.token || '';
+        setAuthToken(token);
+        try {
+          window.localStorage.setItem('dnd_auth_token', token);
+        } catch {
+          /* ignore */
+        }
+        if (data?.user?.email) setAuthEmail(data.user.email);
+        if (data?.user?.name) setAuthName(data.user.name);
+        setAuthPassword('');
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+        setError(null);
+        setCurrentView('cover');
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Sign-in link failed');
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+      }
+    })();
+  }, [backendBaseUrl]);
 
   useEffect(() => {
     const checkApiKey = async () => {
@@ -169,44 +255,261 @@ const App: React.FC = () => {
   const apiFetch = useCallback(async (path: string, init?: RequestInit) => {
     const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(init?.headers as Record<string, string> || {}) };
     if (authToken) headers.Authorization = `Bearer ${authToken}`;
-    const res = await fetch(`${backendBaseUrl}${path}`, { ...init, headers });
+    let res: Response;
+    try {
+      res = await fetch(`${backendBaseUrl}${path}`, { ...init, headers });
+    } catch {
+      const isDev = import.meta.env.DEV;
+      const apiHint = backendBaseUrl || '(same-origin /api via Vite proxy → :8080)';
+      const hint = !isDev
+        ? ` Set VITE_BACKEND_URL in Vercel to your public API URL (HTTPS).`
+        : ` Start the backend: cd backend && npm run dev (port 8080). Frontend uses ${apiHint}.`;
+      throw new Error(`Cannot reach API ${apiHint}. Email verification and auth need the Node backend running. ${hint}`);
+    }
     const data = await res.json().catch(() => ({}));
-    if (!res.ok || data?.ok === false) throw new Error(data?.error || `Request failed: ${res.status}`);
+    if (!res.ok || data?.ok === false) {
+      if (res.status === 401) {
+        throw new Error(data?.error || 'Unauthorized — please Login first (room features need an account).');
+      }
+      throw new Error(data?.error || `Request failed: ${res.status}`);
+    }
     return data;
   }, [authToken, backendBaseUrl]);
 
   const handleRegister = useCallback(async () => {
+    if (!authEmail.trim() || !authPassword.trim()) {
+      setError('Enter email and password to register.');
+      return;
+    }
+    setAuthBusy(true);
+    setAuthSuccessLine(null);
+    try {
     const result = await apiFetch('/api/auth/register', { method: 'POST', body: JSON.stringify({ email: authEmail, name: authName || 'Player', password: authPassword }) });
-    if (result?.ok) setError('Registered. Now click Login.');
+    if (result?.existingAccount && result?.magicLinkSent) {
+      if (result?.devMagicLinkUrl) {
+        setError(null);
+        setAuthSuccessLine(
+          `Local dev: open this link to sign in (email did not deliver): ${result.devMagicLinkUrl} — or use Login with your password.`
+        );
+        return;
+      }
+      if (result?.resendFallback) {
+        setError(
+          'This email is already registered. Mail could not be sent — copy the sign-in URL from the backend terminal ([EMAIL-FALLBACK]). Or use Login with your password. Add SMTP (DND_SMTP_*) or verify a Resend domain so any address can receive mail.'
+        );
+        return;
+      }
+      if (deliveredToRealInbox(result)) {
+        const via = result?.deliveredViaSmtpFallback ? ' (delivered via backup SMTP)' : '';
+        setError(null);
+        setAuthSuccessLine(
+          `This email is already registered. We sent a one-time sign-in link${via} — check your inbox (valid ~15 min). You can still use Login with your password.`
+        );
+        return;
+      }
+      setError(
+        'This email is already registered. Sign-in link was logged in the backend terminal only. Set RESEND_API_KEY and/or SMTP in backend/.env. You can still use Login.'
+      );
+      return;
+    }
+    if (result?.ok) {
+      if (result?.devVerificationCode) {
+        setVerificationCode(result.devVerificationCode);
+        setError(null);
+        setAuthSuccessLine(
+          result?.resendFallback
+            ? `Local dev: email did not reach your inbox. Your code ${result.devVerificationCode} is filled in below — tap Verify Email.`
+            : `Registered. Code ${result.devVerificationCode} is filled in below (also emailed if delivery succeeded).`
+        );
+        return;
+      }
+      if (result?.resendFallback) {
+        setError(
+          'Registered. Mail could not be sent to this address — your 6-digit code is in the backend terminal ([EMAIL-FALLBACK]). Paste it below to verify. Configure SMTP fallback (DND_SMTP_*) or verify a domain in Resend (see backend/EMAIL.md).'
+        );
+        return;
+      }
+      if (deliveredToRealInbox(result)) {
+        const via = result?.deliveredViaSmtpFallback ? ' (sent via backup SMTP)' : '';
+        setError(null);
+        setAuthSuccessLine(`Registered. Check your email for the 6-digit code${via}, then verify below. Or click Login.`);
+        return;
+      }
+      setError(
+        'Registered. No outbound email — look in the backend terminal for [EMAIL-FALLBACK]. Or click Login. Set RESEND_API_KEY and/or SMTP in backend/.env.'
+      );
+    }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAuthBusy(false);
+    }
   }, [apiFetch, authEmail, authName, authPassword]);
 
   const handleLogin = useCallback(async () => {
-    const result = await apiFetch('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: authEmail, password: authPassword }) });
-    const token = result?.token || '';
-    setAuthToken(token);
-    try { window.localStorage.setItem('dnd_auth_token', token); } catch {}
+    if (!authEmail.trim() || !authPassword.trim()) {
+      setError('Enter email and password to login.');
+      return;
+    }
+    setAuthBusy(true);
+    setAuthSuccessLine(null);
     setError(null);
-    setCurrentView('cover');
+    try {
+      const result = await apiFetch('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: authEmail, password: authPassword }) });
+      const token = result?.token || '';
+      setAuthToken(token);
+      try {
+        window.localStorage.setItem('dnd_auth_token', token);
+      } catch {
+        /* ignore */
+      }
+      setError(null);
+      setCurrentView('cover');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/verify|not verified|verify first/i.test(msg)) {
+        setError(
+          'Email not verified yet — enter the 6-digit code in the Email Verification section and click Verify Email, then try Login again.'
+        );
+      } else if (/Invalid credentials/i.test(msg)) {
+        setError(
+          'Wrong email or password. If you just registered, click Verify Email first. If you forgot your password, use Forgot Password below.'
+        );
+      } else {
+        setError(msg);
+      }
+    } finally {
+      setAuthBusy(false);
+    }
   }, [apiFetch, authEmail, authPassword]);
 
   const handleSendVerificationCode = useCallback(async () => {
-    await apiFetch('/api/auth/send-verification', { method: 'POST', body: JSON.stringify({ email: authEmail }) });
-    setError('Verification code sent. Check your email (or backend console in local mode).');
+    if (!authEmail.trim()) {
+      setError('Enter your email first.');
+      return;
+    }
+    setAuthBusy(true);
+    setAuthSuccessLine(null);
+    try {
+    const result = await apiFetch('/api/auth/send-verification', { method: 'POST', body: JSON.stringify({ email: authEmail }) });
+    if (result?.devVerificationCode) {
+      setVerificationCode(result.devVerificationCode);
+      setError(null);
+      setAuthSuccessLine(
+        result?.resendFallback
+          ? `Local dev: inbox did not receive mail. Your code ${result.devVerificationCode} is filled in — tap Verify Email. For real email add SMTP or verify a Resend domain.`
+          : `Verification code ${result.devVerificationCode} is filled in (check email too).`
+      );
+      return;
+    }
+    if (result?.resendFallback) {
+      setError(
+        'Could not send to this inbox — your code is in the backend terminal ([EMAIL-FALLBACK]). Add SMTP (DND_SMTP_*) or verify a Resend domain so any email can receive codes. Or set DND_DEV_EXPOSE_CODE_IN_API=1 in backend/.env for local dev.'
+      );
+      return;
+    }
+    if (deliveredToRealInbox(result)) {
+      setError(null);
+      setAuthSuccessLine(
+        result?.deliveredViaSmtpFallback
+          ? 'Verification code sent via backup SMTP — check your inbox and spam folder.'
+          : 'Verification code sent — check your inbox and spam folder.'
+      );
+      return;
+    }
+    setError(
+      'Code generated locally only — see backend terminal for `[EMAIL-FALLBACK]`. Set RESEND_API_KEY and/or SMTP in backend/.env for real email.'
+    );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAuthBusy(false);
+    }
   }, [apiFetch, authEmail]);
 
   const handleVerifyEmail = useCallback(async () => {
-    await apiFetch('/api/auth/verify-email', { method: 'POST', body: JSON.stringify({ email: authEmail, code: verificationCode }) });
-    setError('Email verified. You can login now.');
+    if (!authEmail.trim() || !verificationCode.trim()) {
+      setError('Enter email and the verification code.');
+      return;
+    }
+    setAuthBusy(true);
+    setError(null);
+    try {
+      await apiFetch('/api/auth/verify-email', { method: 'POST', body: JSON.stringify({ email: authEmail, code: verificationCode }) });
+      setAuthSuccessLine('Email verified. You can click Login now with the same email and password.');
+    } catch (e) {
+      setAuthSuccessLine(null);
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAuthBusy(false);
+    }
   }, [apiFetch, authEmail, verificationCode]);
 
   const handleForgotPassword = useCallback(async () => {
-    await apiFetch('/api/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email: authEmail }) });
-    setError('Reset code sent. Check your email (or backend console in local mode).');
+    if (!authEmail.trim()) {
+      setError('Enter your email first.');
+      return;
+    }
+    setAuthBusy(true);
+    setAuthSuccessLine(null);
+    try {
+    const result = await apiFetch('/api/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email: authEmail }) });
+    if (result?.emailDelivery === 'skipped_no_user') {
+      setError(null);
+      setAuthSuccessLine('If an account exists for that email, a reset code was sent (check inbox).');
+      return;
+    }
+    if (result?.devVerificationCode) {
+      setResetCode(result.devVerificationCode);
+      setError(null);
+      setAuthSuccessLine(
+        result?.resendFallback
+          ? `Local dev: reset code ${result.devVerificationCode} is filled in — use it with your new password below.`
+          : `If your account exists, reset code ${result.devVerificationCode} is filled in — check email too.`
+      );
+      return;
+    }
+    if (result?.resendFallback) {
+      setError(
+        'Could not send mail — if your account exists, the reset code is in the backend terminal ([EMAIL-FALLBACK]). Add SMTP or verify a Resend domain. Or set DND_DEV_EXPOSE_CODE_IN_API=1 for local dev.'
+      );
+      return;
+    }
+    if (deliveredToRealInbox(result)) {
+      setError(null);
+      setAuthSuccessLine(
+        result?.deliveredViaSmtpFallback
+          ? 'If an account exists, a reset code was sent via backup SMTP — check inbox and spam.'
+          : 'If an account exists, a reset code was sent — check inbox and spam.'
+      );
+      return;
+    }
+    setError(
+      'Reset code only in backend terminal (`[EMAIL-FALLBACK]`). Set RESEND_API_KEY and/or SMTP in backend/.env.'
+    );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAuthBusy(false);
+    }
   }, [apiFetch, authEmail]);
 
   const handleResetPassword = useCallback(async () => {
-    await apiFetch('/api/auth/reset-password', { method: 'POST', body: JSON.stringify({ email: authEmail, code: resetCode, newPassword }) });
-    setError('Password reset complete. Please login with new password.');
+    if (!authEmail.trim() || !resetCode.trim() || !newPassword.trim()) {
+      setError('Enter email, reset code, and new password.');
+      return;
+    }
+    setAuthBusy(true);
+    setAuthSuccessLine(null);
+    try {
+      await apiFetch('/api/auth/reset-password', { method: 'POST', body: JSON.stringify({ email: authEmail, code: resetCode, newPassword }) });
+      setError(null);
+      setAuthSuccessLine('Password reset complete. Login with your new password.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAuthBusy(false);
+    }
   }, [apiFetch, authEmail, resetCode, newPassword]);
 
   const handleCreateCampaignSave = useCallback(async () => {
@@ -281,16 +584,32 @@ const App: React.FC = () => {
   }, [apiFetch, campaignId]);
 
   const handleJoinRoom = useCallback(async () => {
-    if (!roomJoinCode) return;
+    if (!authToken) {
+      setError('Please Login first — room features require an account.');
+      return;
+    }
+    if (!roomJoinCode.trim()) {
+      setError('Enter an invite code.');
+      return;
+    }
     const result = await apiFetch('/api/rooms/join', { method: 'POST', body: JSON.stringify({ inviteCode: roomJoinCode }) });
     setRoomId(result?.roomId || null);
-  }, [apiFetch, roomJoinCode]);
+    setError(null);
+  }, [apiFetch, roomJoinCode, authToken]);
 
   const handleLoadMessages = useCallback(async () => {
-    if (!roomId) return;
+    if (!authToken) {
+      setError('Please Login first — chat requires an account.');
+      return;
+    }
+    if (!roomId) {
+      setError('Join a room first (enter invite code and click Join Room).');
+      return;
+    }
     const result = await apiFetch(`/api/rooms/${roomId}/messages`);
     setRoomMessages(result?.messages || []);
-  }, [apiFetch, roomId]);
+    setError(null);
+  }, [apiFetch, roomId, authToken]);
 
   const handleSendMessage = useCallback(async () => {
     if (!roomId || !chatInput.trim()) return;
@@ -378,6 +697,7 @@ const App: React.FC = () => {
 
   const handleQuickStart = () => {
     setError(null);
+    setAuthSuccessLine(null);
     setCurrentView('cover');
   };
 
@@ -751,6 +1071,10 @@ const App: React.FC = () => {
                 exit={{ opacity: 0, y: -16 }}
               >
                 <LoginGatePage
+                  mailStatus={mailStatus}
+                  authError={error}
+                  authSuccess={authSuccessLine}
+                  isAuthBusy={authBusy}
                   email={authEmail}
                   name={authName}
                   password={authPassword}
@@ -767,17 +1091,16 @@ const App: React.FC = () => {
                   onResetCodeChange={setResetCode}
                   onNewPasswordChange={setNewPassword}
                   onInviteCodeChange={setRoomJoinCode}
-                  onRegister={() => handleRegister().catch((e) => setError(String(e?.message || e)))}
-                  onLogin={() => handleLogin().catch((e) => setError(String(e?.message || e)))}
-                  onSendVerificationCode={() => handleSendVerificationCode().catch((e) => setError(String(e?.message || e)))}
-                  onVerifyEmail={() => handleVerifyEmail().catch((e) => setError(String(e?.message || e)))}
-                  onForgotPassword={() => handleForgotPassword().catch((e) => setError(String(e?.message || e)))}
-                  onResetPassword={() => handleResetPassword().catch((e) => setError(String(e?.message || e)))}
+                  onRegister={() => handleRegister()}
+                  onLogin={() => handleLogin()}
+                  onSendVerificationCode={() => handleSendVerificationCode()}
+                  onVerifyEmail={() => handleVerifyEmail()}
+                  onForgotPassword={() => handleForgotPassword()}
+                  onResetPassword={() => handleResetPassword()}
                   onQuickStart={handleQuickStart}
                   onJoinRoom={() => handleJoinRoom().catch((e) => setError(String(e?.message || e)))}
                   onRefreshChat={() => handleLoadMessages().catch((e) => setError(String(e?.message || e)))}
                 />
-                {error ? <p className="mt-4 text-center text-red-300">{error}</p> : null}
               </motion.div>
             )}
             {currentView === 'cover' && (
