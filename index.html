@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Dungeons and Dragons Adventure</title>
+    <!-- First-paint: avoid white flash before CSS / JS -->
+    <style>
+      html { background-color: #020617; color-scheme: dark; }
+      body { margin: 0; min-height: 100vh; background-color: #020617; color: #e2e8f0; }
+      #root { min-height: 100vh; background-color: #020617; }
+      @keyframes boot-dragon-pulse {
+        0%, 100% { transform: scale(1); opacity: 0.85; }
+        50% { transform: scale(1.08); opacity: 1; }
+      }
+      .boot-dragon-img {
+        display: block;
+        width: 72px;
+        height: 72px;
+        margin: 0 auto 12px;
+        filter: drop-shadow(0 0 12px #f59e0b);
+        animation: boot-dragon-pulse 2s ease-in-out infinite;
+      }
+      .boot-dragon-tag {
+        text-align: center;
+        color: #f59e0b;
+        letter-spacing: 0.28em;
+        font-family: 'Cinzel Decorative', Georgia, serif;
+        font-size: 11px;
+        text-transform: uppercase;
+        margin: 0 0 8px 0;
+      }
+    </style>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'EB Garamond', Georgia, 'Times New Roman', serif;
+      }
+      h1, h2, h3, h4, h5, h6 {
+        font-family: 'Cinzel Decorative', Georgia, serif;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.1.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
+    "react/": "https://aistudiocdn.com/react@^19.1.1/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.20.0"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root">
+      <div id="boot-fallback" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;">
+        <div style="max-width:760px;width:100%;background:rgba(0,0,0,.35);border:1px solid rgba(251,191,36,.35);border-radius:12px;padding:20px;color:#fcd34d;">
+          <p class="boot-dragon-tag">Chronicles of Shadow</p>
+          <img
+            class="boot-dragon-img"
+            src="https://img.icons8.com/ios-filled/100/FAB005/dragon.png"
+            alt=""
+            width="72"
+            height="72"
+            decoding="async"
+          />
+          <h1 style="font-size:22px;margin:0 0 8px 0;text-align:center;">Loading your adventure...</h1>
+          <p style="opacity:.9;margin:0;">If this stays blank for more than 5 seconds, press <strong>Cmd+Shift+R</strong> to hard refresh.</p>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.__BOOT_ERRORS__ = [];
+      window.addEventListener('error', function (event) {
+        window.__BOOT_ERRORS__.push(String(event?.error?.message || event?.message || 'Unknown script error'));
+      });
+      window.addEventListener('unhandledrejection', function (event) {
+        window.__BOOT_ERRORS__.push(String(event?.reason?.message || event?.reason || 'Unhandled promise rejection'));
+      });
+      setTimeout(function () {
+        var fallback = document.getElementById('boot-fallback');
+        if (!fallback) return;
+        var reason = (window.__BOOT_ERRORS__ && window.__BOOT_ERRORS__[0]) || 'App failed to mount (possible stale cache or runtime crash).';
+        fallback.innerHTML =
+          '<div style="max-width:760px;width:100%;background:rgba(0,0,0,.35);border:1px solid rgba(251,191,36,.35);border-radius:12px;padding:20px;color:#fcd34d;">' +
+          '<h1 style="font-size:22px;margin:0 0 8px 0;">Startup glitch detected.</h1>' +
+          '<p style="opacity:.9;margin:0 0 10px 0;">Try hard refresh (Cmd+Shift+R) or open the latest deployment link.</p>' +
+          '<p style="font-size:12px;color:#fca5a5;word-break:break-word;margin:0 0 14px 0;">' + reason + '</p>' +
+          '<button onclick="location.reload()" style="background:#b45309;color:white;border:none;padding:10px 14px;border-radius:8px;cursor:pointer;">Reload Adventure</button>' +
+          '</div>';
+      }, 5000);
+    </script>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

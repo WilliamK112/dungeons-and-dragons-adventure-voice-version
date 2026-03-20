@@ -1,0 +1,7 @@
+{
+  "name": "FaceSwap Avatar Studio",
+  "description": "Capture your face and transform into any character or style using AI. A personalized avatar generator with face-swapping capabilities.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

@@ -1,0 +1,476 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useRef, useCallback } from 'react';
+import { GoogleGenAI } from "@google/genai";
+import { Camera, RefreshCw, Sparkles, Download, User, Image as ImageIcon, Loader2, CameraOff } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+
+// Initialize Gemini API
+const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+
+export default function App() {
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [prompt, setPrompt] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [resultImage, setResultImage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [activeStream, setActiveStream] = useState<MediaStream | null>(null);
+  
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoElementRef = useRef<HTMLVideoElement | null>(null);
+
+  // Callback ref to handle video element mounting/unmounting
+  const onVideoRef = useCallback((node: HTMLVideoElement | null) => {
+    if (node) {
+      videoElementRef.current = node;
+      if (activeStream) {
+        node.srcObject = activeStream;
+        node.play().catch(err => {
+          console.error("Video play error:", err);
+          // Fallback: try playing again on user interaction if needed
+        });
+      }
+    } else {
+      videoElementRef.current = null;
+    }
+  }, [activeStream]);
+
+  const startCamera = async () => {
+    try {
+      setError(null);
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'user', width: { ideal: 1024 }, height: { ideal: 1024 } } 
+      });
+      setActiveStream(stream);
+      setIsCameraActive(true);
+    } catch (err) {
+      console.error("Error accessing camera:", err);
+      setError("Could not access camera. Please ensure you've granted permissions.");
+    }
+  };
+
+  const stopCamera = () => {
+    if (activeStream) {
+      activeStream.getTracks().forEach(track => track.stop());
+      setActiveStream(null);
+    }
+    setIsCameraActive(false);
+  };
+
+  const capturePhoto = () => {
+    if (videoElementRef.current && canvasRef.current) {
+      const video = videoElementRef.current;
+      const canvas = canvasRef.current;
+      const context = canvas.getContext('2d');
+      
+      if (context) {
+        // Create a square crop from the center
+        const size = Math.min(video.videoWidth, video.videoHeight);
+        const startX = (video.videoWidth - size) / 2;
+        const startY = (video.videoHeight - size) / 2;
+        
+        canvas.width = 512;
+        canvas.height = 512;
+        
+        context.drawImage(video, startX, startY, size, size, 0, 0, 512, 512);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        setCapturedImage(dataUrl);
+        stopCamera();
+      }
+    }
+  };
+
+  const generateAvatar = async () => {
+    if (!capturedImage || !prompt) return;
+    
+    setIsGenerating(true);
+    setError(null);
+    
+    try {
+      const base64Data = capturedImage.split(',')[1];
+      
+      // Reverting to gemini-2.5-flash-image as requested by user
+      const response = await genAI.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                data: base64Data,
+                mimeType: 'image/jpeg',
+              },
+            },
+            {
+              text: `IDENTITY ANCHOR: The person in this photo is the absolute source of truth for facial identity.
+              
+              TASK: Create a professional digital masterpiece based on the style: "${prompt}".
+              
+              STRICT CONSTRAINTS:
+              1. FACIAL FIDELITY: You must replicate the EXACT eyes, nose, mouth, face shape, and unique facial landmarks of the person in the reference image. The likeness must be 1:1.
+              2. INTEGRATION: Seamlessly place this EXACT face onto the character body and environment described in the prompt.
+              3. LIGHTING: Adapt the lighting and shadows on the face to match the new scene perfectly, but do not alter the underlying facial structure.
+              4. QUALITY: Ensure high detail, sharp focus on the eyes, and professional cinematic composition.`,
+            },
+          ],
+        },
+      });
+
+      let foundImage = false;
+      for (const part of response.candidates?.[0]?.content?.parts || []) {
+        if (part.inlineData) {
+          setResultImage(`data:image/png;base64,${part.inlineData.data}`);
+          foundImage = true;
+          break;
+        }
+      }
+
+      if (!foundImage) {
+        throw new Error("No image was generated by the model. Please try a different prompt.");
+      }
+    } catch (err) {
+      console.error("Generation error:", err);
+      setError(err instanceof Error ? err.message : "An unexpected error occurred during generation.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const reset = () => {
+    setCapturedImage(null);
+    setResultImage(null);
+    setPrompt('');
+    setError(null);
+  };
+
+  const downloadImage = () => {
+    if (resultImage) {
+      const link = document.createElement('a');
+      link.href = resultImage;
+      link.download = `avatar-${Date.now()}.png`;
+      link.click();
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        setError("Please upload a valid image file.");
+        return;
+      }
+      
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const dataUrl = event.target?.result as string;
+        setCapturedImage(dataUrl);
+        setError(null);
+      };
+      reader.onerror = () => {
+        setError("Failed to read the uploaded file.");
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const triggerFileUpload = () => {
+    fileInputRef.current?.click();
+  };
+
+  return (
+    <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-orange-500 selection:text-white">
+      {/* Background Atmosphere */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-orange-900/20 blur-[120px] rounded-full" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-900/10 blur-[120px] rounded-full" />
+      </div>
+
+      <main className="relative z-10 max-w-5xl mx-auto px-6 py-12">
+        {/* Header */}
+        <header className="mb-12 text-center">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/10 bg-white/5 text-[10px] uppercase tracking-[0.2em] font-semibold text-orange-400 mb-4"
+          >
+            <Sparkles size={12} />
+            AI Powered Identity Morph
+          </motion.div>
+          <motion.h1 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="text-5xl md:text-7xl font-bold tracking-tighter mb-4"
+          >
+            AVATAR <span className="text-orange-500 italic">STUDIO</span>
+          </motion.h1>
+          <motion.p 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="text-white/50 max-w-lg mx-auto text-sm md:text-base"
+          >
+            Capture your likeness and transform into anyone, anywhere. 
+            Our AI preserves your face while reimagining your world.
+          </motion.p>
+        </header>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
+          {/* Left Column: Capture & Input */}
+          <section className="space-y-8">
+            <div className="relative aspect-square rounded-3xl overflow-hidden bg-white/5 border border-white/10 shadow-2xl">
+              <AnimatePresence mode="wait">
+                {!capturedImage && !isCameraActive && (
+                  <motion.div 
+                    key="start"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center"
+                  >
+                    <div className="w-20 h-20 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-6">
+                      <User size={32} className="text-white/30" />
+                    </div>
+                    <h3 className="text-xl font-semibold mb-2">Step 1: Capture Your Face</h3>
+                    <p className="text-white/40 text-sm mb-8 max-w-xs">
+                      Take a clear, well-lit photo of your face or upload an existing image.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-4">
+                      <button 
+                        onClick={startCamera}
+                        className="group relative px-8 py-4 bg-white text-black rounded-full font-bold transition-transform active:scale-95 hover:scale-105"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Camera size={20} />
+                          Open Camera
+                        </span>
+                      </button>
+                      <button 
+                        onClick={triggerFileUpload}
+                        className="group relative px-8 py-4 bg-white/10 text-white border border-white/10 rounded-full font-bold transition-transform active:scale-95 hover:scale-105 hover:bg-white/20"
+                      >
+                        <span className="flex items-center gap-2">
+                          <ImageIcon size={20} />
+                          Upload Photo
+                        </span>
+                      </button>
+                      <input 
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileUpload}
+                        accept="image/*"
+                        className="hidden"
+                      />
+                    </div>
+                  </motion.div>
+                )}
+
+                {isCameraActive && (
+                  <motion.div 
+                    key="camera"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute inset-0 bg-black"
+                  >
+                    <video 
+                      ref={onVideoRef} 
+                      autoPlay 
+                      playsInline 
+                      muted
+                      className="w-full h-full object-cover mirror"
+                    />
+                    <div className="absolute bottom-8 left-0 right-0 flex justify-center gap-4 px-8">
+                      <button 
+                        onClick={stopCamera}
+                        className="p-4 rounded-full bg-black/50 backdrop-blur-md border border-white/10 hover:bg-black/70 transition-colors"
+                      >
+                        <CameraOff size={24} />
+                      </button>
+                      <button 
+                        onClick={capturePhoto}
+                        className="flex-1 py-4 bg-orange-500 text-white rounded-full font-bold shadow-lg shadow-orange-500/20 hover:bg-orange-600 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Camera size={20} />
+                        Capture Moment
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+
+                {capturedImage && (
+                  <motion.div 
+                    key="captured"
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute inset-0 group"
+                  >
+                    <img 
+                      src={capturedImage} 
+                      alt="Captured" 
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <button 
+                        onClick={() => { setCapturedImage(null); startCamera(); }}
+                        className="flex items-center gap-2 px-6 py-3 bg-white text-black rounded-full font-bold"
+                      >
+                        <RefreshCw size={18} />
+                        Retake
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <div className="space-y-4">
+              <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-white/40 ml-1">
+                Step 2: Describe Your Style
+              </label>
+              <div className="relative">
+                <textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="e.g., A futuristic cyber-punk warrior in a neon city, oil painting style, dramatic lighting..."
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 min-h-[120px] text-lg focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all placeholder:text-white/20 resize-none"
+                />
+                <div className="absolute bottom-4 right-4 text-[10px] text-white/20 uppercase font-mono">
+                  Prompt Input
+                </div>
+              </div>
+
+              <button
+                disabled={!capturedImage || !prompt || isGenerating}
+                onClick={generateAvatar}
+                className={`w-full py-5 rounded-2xl font-bold text-lg transition-all flex items-center justify-center gap-3 shadow-xl ${
+                  !capturedImage || !prompt || isGenerating
+                    ? 'bg-white/5 text-white/20 cursor-not-allowed border border-white/5'
+                    : 'bg-orange-500 text-white hover:bg-orange-600 shadow-orange-500/20 active:scale-[0.98]'
+                }`}
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 size={24} className="animate-spin" />
+                    Generating Identity...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={24} />
+                    Generate Avatar
+                  </>
+                )}
+              </button>
+
+              {error && (
+                <motion.p 
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-red-400 text-sm text-center bg-red-400/10 py-3 rounded-xl border border-red-400/20"
+                >
+                  {error}
+                </motion.p>
+              )}
+            </div>
+          </section>
+
+          {/* Right Column: Result */}
+          <section className="lg:sticky lg:top-12">
+            <div className="relative aspect-square rounded-3xl overflow-hidden bg-white/5 border border-white/10 shadow-2xl flex items-center justify-center">
+              <AnimatePresence mode="wait">
+                {isGenerating ? (
+                  <motion.div 
+                    key="loading"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex flex-col items-center gap-6 p-12 text-center"
+                  >
+                    <div className="relative">
+                      <div className="w-24 h-24 rounded-full border-2 border-orange-500/20 border-t-orange-500 animate-spin" />
+                      <Sparkles className="absolute inset-0 m-auto text-orange-500 animate-pulse" size={32} />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-semibold mb-2 italic">Weaving Pixels...</h3>
+                      <p className="text-white/40 text-sm max-w-xs">
+                        Our AI is blending your features with the requested style. This usually takes 10-20 seconds.
+                      </p>
+                    </div>
+                  </motion.div>
+                ) : resultImage ? (
+                  <motion.div 
+                    key="result"
+                    initial={{ opacity: 0, scale: 1.1 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="absolute inset-0"
+                  >
+                    <img 
+                      src={resultImage} 
+                      alt="Result" 
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute bottom-6 left-6 right-6 flex gap-3">
+                      <button 
+                        onClick={downloadImage}
+                        className="flex-1 py-4 bg-white text-black rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-white/90 transition-colors"
+                      >
+                        <Download size={20} />
+                        Download
+                      </button>
+                      <button 
+                        onClick={reset}
+                        className="p-4 bg-black/50 backdrop-blur-md border border-white/10 rounded-2xl hover:bg-black/70 transition-colors"
+                      >
+                        <RefreshCw size={20} />
+                      </button>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.div 
+                    key="empty"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex flex-col items-center text-center p-12"
+                  >
+                    <div className="w-20 h-20 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-6">
+                      <ImageIcon size={32} className="text-white/20" />
+                    </div>
+                    <h3 className="text-xl font-semibold mb-2 text-white/40">Awaiting Creation</h3>
+                    <p className="text-white/20 text-sm max-w-xs">
+                      Your generated avatar will appear here once you've captured a photo and provided a prompt.
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Micro-labels */}
+            <div className="mt-8 grid grid-cols-2 gap-4">
+              <div className="p-4 rounded-2xl bg-white/5 border border-white/5">
+                <div className="text-[10px] uppercase tracking-widest text-white/30 mb-1">Model</div>
+                <div className="text-xs font-mono">Gemini 2.5 Flash Image</div>
+              </div>
+              <div className="p-4 rounded-2xl bg-white/5 border border-white/5">
+                <div className="text-[10px] uppercase tracking-widest text-white/30 mb-1">Resolution</div>
+                <div className="text-xs font-mono">1024 x 1024 px</div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      <canvas ref={canvasRef} className="hidden" />
+
+      <style>{`
+        .mirror {
+          transform: scaleX(-1);
+        }
+      `}</style>
+    </div>
+  );
+}

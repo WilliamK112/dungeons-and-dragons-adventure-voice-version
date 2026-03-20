@@ -1,0 +1,37 @@
+/* Dragon breathing loader (Icons8 dragon icon + pulse) */
+@keyframes loader-dragon-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+.loader-dragon {
+  display: block;
+  filter: drop-shadow(0 0 10px #f59e0b);
+  animation: loader-dragon-pulse 2s infinite ease-in-out;
+}
+
+.loader-dragon--md {
+  width: 64px;
+  height: 64px;
+}
+
+.loader-dragon--sm {
+  width: 32px;
+  height: 32px;
+}
+
+.loader-dragon-tagline {
+  color: #f59e0b;
+  margin-top: 20px;
+  letter-spacing: 4px;
+  font-family: 'Cinzel Decorative', serif;
+  font-size: 12px;
+  text-transform: uppercase;
+}
