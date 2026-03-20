@@ -447,14 +447,15 @@ const App: React.FC = () => {
   }, [apiFetch, authEmail]);
 
   const handleVerifyEmail = useCallback(async () => {
-    if (!authEmail.trim() || !verificationCode.trim()) {
-      setError('Enter email and the verification code.');
+    const codeDigits = verificationCode.replace(/\D/g, '').slice(0, 6);
+    if (!authEmail.trim() || codeDigits.length !== 6) {
+      setError('Enter email and the 6-digit verification code.');
       return;
     }
     setAuthBusy(true);
     setError(null);
     try {
-      await apiFetch('/api/auth/verify-email', { method: 'POST', body: JSON.stringify({ email: authEmail, code: verificationCode }) });
+      await apiFetch('/api/auth/verify-email', { method: 'POST', body: JSON.stringify({ email: authEmail, code: codeDigits }) });
       setAuthSuccessLine('Email verified. You can click Login now with the same email and password.');
     } catch (e) {
       setAuthSuccessLine(null);

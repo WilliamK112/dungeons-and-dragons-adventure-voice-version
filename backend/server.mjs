@@ -193,6 +193,11 @@ function genNumericCode(length = 6) {
   return Array.from({ length }, () => Math.floor(Math.random() * 10)).join('');
 }
 
+/** Strip non-digits so codes pasted from email (spaces, hyphens) still verify. */
+function normalizeNumericCodeInput(code) {
+  return String(code ?? '').replace(/\D/g, '');
+}
+
 function nowIsoPlusMinutes(mins) {
   return new Date(Date.now() + mins * 60 * 1000).toISOString();
 }
@@ -597,6 +602,7 @@ app.post('/api/auth/register', async (req, res) => {
         existingAccount: true,
         magicLinkSent: true,
         ...emailApiFields(mailResult),
+        ...devExposeMagicLinkUrl(link),
       });
     } catch (inner) {
       return res.status(500).json({ ok: false, error: inner.message || 'Failed to send sign-in link' });
@@ -635,10 +641,12 @@ app.post('/api/auth/verify-email', (req, res) => {
   const { email, code } = req.body || {};
   if (!email || !code) return res.status(400).json({ ok: false, error: 'email,code required' });
   const normalizedEmail = String(email).toLowerCase().trim();
+  const codeIn = normalizeNumericCodeInput(code);
+  if (!codeIn) return res.status(400).json({ ok: false, error: 'Invalid verification code' });
   const row = db.prepare(`SELECT id, code, expires_at FROM email_verification_codes WHERE email = ? AND used = 0 ORDER BY id DESC LIMIT 1`).get(normalizedEmail);
   if (!row) return res.status(400).json({ ok: false, error: 'No verification code found' });
   if (new Date(row.expires_at).getTime() < Date.now()) return res.status(400).json({ ok: false, error: 'Verification code expired' });
-  if (String(code).trim() !== String(row.code)) return res.status(400).json({ ok: false, error: 'Invalid verification code' });
+  if (codeIn !== normalizeNumericCodeInput(row.code)) return res.status(400).json({ ok: false, error: 'Invalid verification code' });
 
   const tx = db.transaction(() => {
     db.prepare('UPDATE email_verification_codes SET used = 1 WHERE id = ?').run(row.id);
@@ -711,7 +719,10 @@ app.post('/api/auth/reset-password', (req, res) => {
   const row = db.prepare(`SELECT id, code, expires_at FROM password_reset_codes WHERE email = ? AND used = 0 ORDER BY id DESC LIMIT 1`).get(normalizedEmail);
   if (!row) return res.status(400).json({ ok: false, error: 'No reset code found' });
   if (new Date(row.expires_at).getTime() < Date.now()) return res.status(400).json({ ok: false, error: 'Reset code expired' });
-  if (String(code).trim() !== String(row.code)) return res.status(400).json({ ok: false, error: 'Invalid reset code' });
+  const codeIn = normalizeNumericCodeInput(code);
+  if (!codeIn || codeIn !== normalizeNumericCodeInput(row.code)) {
+    return res.status(400).json({ ok: false, error: 'Invalid reset code' });
+  }
 
   const tx = db.transaction(() => {
     db.prepare('UPDATE password_reset_codes SET used = 1 WHERE id = ?').run(row.id);

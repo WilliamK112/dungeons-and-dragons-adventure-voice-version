@@ -49,6 +49,8 @@ npm run email:check
 npm run dev
 ```
 
+**Verification flow:** Register → receive code (email or dev fallback) → **Verify email** → **Login** (login is rejected until `is_verified`). Codes accept optional spaces when pasted.
+
 Confirm:
 
 ```bash
