@@ -27,6 +27,7 @@ interface LoginGatePageProps {
   name: string;
   password: string;
   verificationCode: string;
+  signupEmailVerified: boolean;
   resetCode: string;
   newPassword: string;
   inviteCode: string;
@@ -63,6 +64,7 @@ const LoginGatePage: React.FC<LoginGatePageProps> = ({
   name,
   password,
   verificationCode,
+  signupEmailVerified,
   resetCode,
   newPassword,
   inviteCode,
@@ -220,7 +222,7 @@ const LoginGatePage: React.FC<LoginGatePageProps> = ({
                   onChange={(e) => onEmailChange(e.target.value)}
                 />
 
-                {authTab === 'signup' ? (
+                {authTab === 'signup' && signupEmailVerified ? (
                   <input
                     className="w-full rounded-lg border border-amber-400/20 bg-black/40 px-3 py-2.5 text-amber-100 placeholder:text-amber-200/35"
                     placeholder="Display name"
@@ -230,14 +232,16 @@ const LoginGatePage: React.FC<LoginGatePageProps> = ({
                   />
                 ) : null}
 
-                <input
-                  type="password"
-                  autoComplete={authTab === 'signin' ? 'current-password' : 'new-password'}
-                  className="w-full rounded-lg border border-amber-400/20 bg-black/40 px-3 py-2.5 text-amber-100 placeholder:text-amber-200/35"
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => onPasswordChange(e.target.value)}
-                />
+                {(authTab === 'signin' || (authTab === 'signup' && signupEmailVerified)) ? (
+                  <input
+                    type="password"
+                    autoComplete={authTab === 'signin' ? 'current-password' : 'new-password'}
+                    className="w-full rounded-lg border border-amber-400/20 bg-black/40 px-3 py-2.5 text-amber-100 placeholder:text-amber-200/35"
+                    placeholder="Password"
+                    value={password}
+                    onChange={(e) => onPasswordChange(e.target.value)}
+                  />
+                ) : null}
 
                 {authTab === 'signin' ? (
                   <button
@@ -248,7 +252,7 @@ const LoginGatePage: React.FC<LoginGatePageProps> = ({
                   >
                     Sign in
                   </button>
-                ) : (
+                ) : signupEmailVerified ? (
                   <button
                     type="button"
                     disabled={disableAuth}
@@ -257,6 +261,10 @@ const LoginGatePage: React.FC<LoginGatePageProps> = ({
                   >
                     Create account
                   </button>
+                ) : (
+                  <p className="rounded-lg border border-amber-500/20 bg-amber-950/20 px-3 py-2 text-xs text-amber-100/85">
+                    Step 1: verify your email first. Step 2: enter username/password to create account.
+                  </p>
                 )}
 
                 <details
@@ -271,8 +279,19 @@ const LoginGatePage: React.FC<LoginGatePageProps> = ({
                   </summary>
                   <div className="space-y-4 border-t border-amber-500/10 px-3 pb-3 pt-2">
                     <p className="text-[11px] leading-relaxed text-amber-200/50">
-                      After registering, check your email for a 6-digit code. If the address is already taken, we may send a one-time sign-in link instead.
+                      Enter email, request a 6-digit code, and verify first. Then finish registration with username + password.
                     </p>
+                    <div
+                      className="rounded-md border border-amber-500/20 bg-black/30 px-2.5 py-2 text-[11px] text-amber-100/85"
+                      aria-live="polite"
+                    >
+                      <span className="text-amber-200/55">Verification email</span>
+                      {email.trim() ? (
+                        <p className="mt-0.5 break-all font-mono text-xs text-amber-100/95">{email.trim()}</p>
+                      ) : (
+                        <p className="mt-0.5 text-amber-200/45">Enter an email in the field above — codes and links go there.</p>
+                      )}
+                    </div>
                     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                       <button
                         type="button"

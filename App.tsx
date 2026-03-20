@@ -27,12 +27,6 @@ function deliveredToRealInbox(r: { emailDelivery?: string; resendFallback?: bool
   return r.emailDelivery === 'resend' || r.emailDelivery === 'smtp';
 }
 
-/** Only pre-fill code fields when mail was accepted for delivery — never when user must rely on terminal fallback. */
-function shouldAutoFillDevCode(r: { devVerificationCode?: string; resendFallback?: boolean; emailDelivery?: string }) {
-  if (!r?.devVerificationCode) return false;
-  return deliveredToRealInbox(r);
-}
-
 type ApiKeyStatus = 'missing' | 'looks-valid' | 'looks-invalid';
 
 const getApiKeyStatus = (key: string, isSelected: boolean): ApiKeyStatus => {
@@ -109,10 +103,14 @@ const App: React.FC = () => {
   const [authToken, setAuthToken] = useState<string>(() => {
     try { return window.localStorage.getItem('dnd_auth_token') || ''; } catch { return ''; }
   });
-  const [authEmail, setAuthEmail] = useState('');
+  const [authEmail, setAuthEmail] = useState(
+    () => import.meta.env.VITE_PREFILL_AUTH_EMAIL?.trim() || ''
+  );
   const [authName, setAuthName] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
+  const [signupEmailVerified, setSignupEmailVerified] = useState(false);
+  const [signupVerificationToken, setSignupVerificationToken] = useState('');
   const [resetCode, setResetCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [campaignId, setCampaignId] = useState<number | null>(null);
@@ -283,79 +281,40 @@ const App: React.FC = () => {
   }, [authToken, backendBaseUrl]);
 
   const handleRegister = useCallback(async () => {
+    if (!signupEmailVerified || !signupVerificationToken) {
+      setError('Please verify your email first (send code → verify code).');
+      return;
+    }
     if (!authEmail.trim() || !authPassword.trim()) {
-      setError('Enter email and password to register.');
+      setError('Enter username and password to create your account.');
       return;
     }
     setAuthBusy(true);
     setAuthSuccessLine(null);
     try {
-    const result = await apiFetch('/api/auth/register', { method: 'POST', body: JSON.stringify({ email: authEmail, name: authName || 'Player', password: authPassword }) });
-    if (result?.existingAccount && result?.magicLinkSent) {
-      if (result?.devMagicLinkUrl) {
+      const result = await apiFetch('/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: authEmail,
+          name: authName || 'Player',
+          password: authPassword,
+          verificationToken: signupVerificationToken,
+        }),
+      });
+      if (result?.existingAccount && result?.magicLinkSent) {
+        setAuthSuccessLine('This email is already registered. Use Login with your password.');
+        return;
+      }
+      if (result?.ok) {
         setError(null);
-        setAuthSuccessLine(
-          `Local dev: open this link to sign in (email did not deliver): ${result.devMagicLinkUrl} — or use Login with your password.`
-        );
-        return;
+        setAuthSuccessLine('Account created successfully. You can login now.');
       }
-      if (result?.resendFallback) {
-        setError(
-          'This email is already registered. Mail could not be sent — copy the sign-in URL from the backend terminal ([EMAIL-FALLBACK]). Or use Login with your password. Add SMTP (DND_SMTP_*) or verify a Resend domain so any address can receive mail.'
-        );
-        return;
-      }
-      if (deliveredToRealInbox(result)) {
-        const via = result?.deliveredViaSmtpFallback ? ' (delivered via backup SMTP)' : '';
-        setError(null);
-        setAuthSuccessLine(
-          `This email is already registered. We sent a one-time sign-in link${via} — check your inbox (valid ~15 min). You can still use Login with your password.`
-        );
-        return;
-      }
-      setError(
-        'This email is already registered. Sign-in link was logged in the backend terminal only. Set RESEND_API_KEY and/or SMTP in backend/.env. You can still use Login.'
-      );
-      return;
-    }
-    if (result?.ok) {
-      if (shouldAutoFillDevCode(result)) {
-        setVerificationCode(result.devVerificationCode!);
-        setError(null);
-        const via = result?.deliveredViaSmtpFallback ? ' (also sent via backup SMTP)' : '';
-        setAuthSuccessLine(`Registered. Check your email for the 6-digit code${via}. The code is filled in below for convenience — or paste from your inbox.`);
-        return;
-      }
-      if (result?.devVerificationCode && !deliveredToRealInbox(result)) {
-        setVerificationCode('');
-        setError(null);
-        setAuthSuccessLine(
-          'Mail was not delivered (Resend test sender often blocks addresses until you verify a domain, and SMTP backup fails if the password is wrong). Code field left empty — see backend terminal [EMAIL-FALLBACK], or follow backend/GMAIL-DELIVERY.md for Gmail, then Send code again.'
-        );
-        return;
-      }
-      if (result?.resendFallback) {
-        setError(
-          'Registered. Mail could not be sent to this address — your 6-digit code is in the backend terminal ([EMAIL-FALLBACK]). Paste it below to verify. Configure SMTP fallback (DND_SMTP_*) or verify a domain in Resend (see backend/EMAIL.md).'
-        );
-        return;
-      }
-      if (deliveredToRealInbox(result)) {
-        const via = result?.deliveredViaSmtpFallback ? ' (sent via backup SMTP)' : '';
-        setError(null);
-        setAuthSuccessLine(`Registered. Check your email for the 6-digit code${via}, then verify below. Or click Login.`);
-        return;
-      }
-      setError(
-        'Registered. No outbound email — look in the backend terminal for [EMAIL-FALLBACK]. Or click Login. Set RESEND_API_KEY and/or SMTP in backend/.env.'
-      );
-    }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setAuthBusy(false);
     }
-  }, [apiFetch, authEmail, authName, authPassword]);
+  }, [apiFetch, authEmail, authName, authPassword, signupEmailVerified, signupVerificationToken]);
 
   const handleLogin = useCallback(async () => {
     if (!authEmail.trim() || !authPassword.trim()) {
@@ -401,18 +360,10 @@ const App: React.FC = () => {
     }
     setAuthBusy(true);
     setAuthSuccessLine(null);
+    setSignupEmailVerified(false);
+    setSignupVerificationToken('');
     try {
     const result = await apiFetch('/api/auth/send-verification', { method: 'POST', body: JSON.stringify({ email: authEmail }) });
-    if (shouldAutoFillDevCode(result)) {
-      setVerificationCode(result.devVerificationCode!);
-      setError(null);
-      setAuthSuccessLine(
-        result?.deliveredViaSmtpFallback
-          ? 'Verification code sent via backup SMTP — check inbox and spam; code filled below for convenience.'
-          : 'Verification code sent — check inbox and spam; code filled below for convenience.'
-      );
-      return;
-    }
     if (result?.devVerificationCode && !deliveredToRealInbox(result)) {
       setVerificationCode('');
       setError(null);
@@ -428,11 +379,12 @@ const App: React.FC = () => {
       return;
     }
     if (deliveredToRealInbox(result)) {
+      setVerificationCode('');
       setError(null);
       setAuthSuccessLine(
         result?.deliveredViaSmtpFallback
-          ? 'Verification code sent via backup SMTP — check your inbox and spam folder.'
-          : 'Verification code sent — check your inbox and spam folder.'
+          ? 'Verification code sent via backup SMTP — check your inbox and spam, then enter the 6-digit code below.'
+          : 'Verification code sent — check your inbox and spam, then enter the 6-digit code below.'
       );
       return;
     }
@@ -455,8 +407,10 @@ const App: React.FC = () => {
     setAuthBusy(true);
     setError(null);
     try {
-      await apiFetch('/api/auth/verify-email', { method: 'POST', body: JSON.stringify({ email: authEmail, code: codeDigits }) });
-      setAuthSuccessLine('Email verified. You can click Login now with the same email and password.');
+      const result = await apiFetch('/api/auth/verify-email', { method: 'POST', body: JSON.stringify({ email: authEmail, code: codeDigits }) });
+      setSignupEmailVerified(true);
+      setSignupVerificationToken(String(result?.verificationToken || ''));
+      setAuthSuccessLine('Email verified. Now enter username + password to finish registration.');
     } catch (e) {
       setAuthSuccessLine(null);
       setError(e instanceof Error ? e.message : String(e));
@@ -479,16 +433,6 @@ const App: React.FC = () => {
       setAuthSuccessLine('If an account exists for that email, a reset code was sent (check inbox).');
       return;
     }
-    if (shouldAutoFillDevCode(result)) {
-      setResetCode(result.devVerificationCode!);
-      setError(null);
-      setAuthSuccessLine(
-        result?.deliveredViaSmtpFallback
-          ? 'If your account exists, a reset code was sent via backup SMTP — check inbox; code filled below for convenience.'
-          : 'If your account exists, a reset code was sent — check inbox; code filled below for convenience.'
-      );
-      return;
-    }
     if (result?.devVerificationCode && !deliveredToRealInbox(result)) {
       setResetCode('');
       setError(null);
@@ -504,11 +448,12 @@ const App: React.FC = () => {
       return;
     }
     if (deliveredToRealInbox(result)) {
+      setResetCode('');
       setError(null);
       setAuthSuccessLine(
         result?.deliveredViaSmtpFallback
-          ? 'If an account exists, a reset code was sent via backup SMTP — check inbox and spam.'
-          : 'If an account exists, a reset code was sent — check inbox and spam.'
+          ? 'If an account exists, a reset code was sent via backup SMTP — check inbox and paste it below.'
+          : 'If an account exists, a reset code was sent — check inbox and paste it below.'
       );
       return;
     }
@@ -1107,6 +1052,7 @@ const App: React.FC = () => {
                   name={authName}
                   password={authPassword}
                   verificationCode={verificationCode}
+                  signupEmailVerified={signupEmailVerified}
                   resetCode={resetCode}
                   newPassword={newPassword}
                   inviteCode={roomJoinCode}

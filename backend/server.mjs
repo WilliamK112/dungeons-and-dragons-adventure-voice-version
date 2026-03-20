@@ -538,27 +538,23 @@ app.get('/api/auth/status', (_req, res) => {
 // --- Auth APIs ---
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { email, name, password } = req.body || {};
+    const { email, name, password, verificationToken } = req.body || {};
     if (!email || !name || !password) return res.status(400).json({ ok: false, error: 'email,name,password required' });
     const normalizedEmail = String(email).toLowerCase().trim();
-    const stmt = db.prepare('INSERT INTO users (email, name, password_hash, is_verified) VALUES (?, ?, ?, 0)');
-    const result = stmt.run(normalizedEmail, String(name).trim(), hashPassword(String(password)));
 
-    const code = genNumericCode(6);
-    db.prepare('INSERT INTO email_verification_codes (email, code, expires_at, used) VALUES (?, ?, ?, 0)').run(normalizedEmail, code, nowIsoPlusMinutes(CODE_TTL_MIN));
-    const mailResult = await sendSystemEmail({
-      to: normalizedEmail,
-      subject: 'Your D&D verification code',
-      text: `Your verification code is: ${code}. It expires in ${CODE_TTL_MIN} minutes.`,
-      html: htmlVerificationEmail(code, CODE_TTL_MIN),
-    });
+    const vp = verifyToken(String(verificationToken || ''));
+    if (!vp || vp.typ !== 'email_verify' || String(vp.email || '').toLowerCase() !== normalizedEmail) {
+      return res.status(400).json({ ok: false, error: 'Please verify email first (send code → verify code).' });
+    }
+
+    const stmt = db.prepare('INSERT INTO users (email, name, password_hash, is_verified) VALUES (?, ?, ?, 1)');
+    const result = stmt.run(normalizedEmail, String(name).trim(), hashPassword(String(password)));
 
     return res.json({
       ok: true,
       userId: result.lastInsertRowid,
-      verificationSent: true,
-      ...emailApiFields(mailResult),
-      ...devExposeVerificationCode(code),
+      verified: true,
+      created: true,
     });
   } catch (e) {
     const msg = String(e?.message || e);
@@ -615,8 +611,6 @@ app.post('/api/auth/send-verification', async (req, res) => {
     const { email } = req.body || {};
     if (!email) return res.status(400).json({ ok: false, error: 'email required' });
     const normalizedEmail = String(email).toLowerCase().trim();
-    const user = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
-    if (!user) return res.status(404).json({ ok: false, error: 'User not found' });
 
     const code = genNumericCode(6);
     db.prepare('INSERT INTO email_verification_codes (email, code, expires_at, used) VALUES (?, ?, ?, 0)').run(normalizedEmail, code, nowIsoPlusMinutes(CODE_TTL_MIN));
@@ -648,12 +642,22 @@ app.post('/api/auth/verify-email', (req, res) => {
   if (new Date(row.expires_at).getTime() < Date.now()) return res.status(400).json({ ok: false, error: 'Verification code expired' });
   if (codeIn !== normalizeNumericCodeInput(row.code)) return res.status(400).json({ ok: false, error: 'Invalid verification code' });
 
-  const tx = db.transaction(() => {
-    db.prepare('UPDATE email_verification_codes SET used = 1 WHERE id = ?').run(row.id);
-    db.prepare('UPDATE users SET is_verified = 1 WHERE email = ?').run(normalizedEmail);
+  db.prepare('UPDATE email_verification_codes SET used = 1 WHERE id = ?').run(row.id);
+
+  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
+  if (existing?.id) {
+    db.prepare('UPDATE users SET is_verified = 1 WHERE id = ?').run(existing.id);
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const verificationToken = signToken({
+    typ: 'email_verify',
+    email: normalizedEmail,
+    iat: now,
+    exp: now + 60 * 30,
   });
-  tx();
-  return res.json({ ok: true, verified: true });
+
+  return res.json({ ok: true, verified: true, verificationToken });
 });
 
 app.post('/api/auth/magic-link/consume', (req, res) => {
