@@ -27,6 +27,12 @@ function deliveredToRealInbox(r: { emailDelivery?: string; resendFallback?: bool
   return r.emailDelivery === 'resend' || r.emailDelivery === 'smtp';
 }
 
+/** Only pre-fill code fields when mail was accepted for delivery — never when user must rely on terminal fallback. */
+function shouldAutoFillDevCode(r: { devVerificationCode?: string; resendFallback?: boolean; emailDelivery?: string }) {
+  if (!r?.devVerificationCode) return false;
+  return deliveredToRealInbox(r);
+}
+
 type ApiKeyStatus = 'missing' | 'looks-valid' | 'looks-invalid';
 
 const getApiKeyStatus = (key: string, isSelected: boolean): ApiKeyStatus => {
@@ -313,13 +319,18 @@ const App: React.FC = () => {
       return;
     }
     if (result?.ok) {
-      if (result?.devVerificationCode) {
-        setVerificationCode(result.devVerificationCode);
+      if (shouldAutoFillDevCode(result)) {
+        setVerificationCode(result.devVerificationCode!);
+        setError(null);
+        const via = result?.deliveredViaSmtpFallback ? ' (also sent via backup SMTP)' : '';
+        setAuthSuccessLine(`Registered. Check your email for the 6-digit code${via}. The code is filled in below for convenience — or paste from your inbox.`);
+        return;
+      }
+      if (result?.devVerificationCode && !deliveredToRealInbox(result)) {
+        setVerificationCode('');
         setError(null);
         setAuthSuccessLine(
-          result?.resendFallback
-            ? `Mail did not reach your inbox (Resend often blocks @qq.com and similar until you verify a sending domain). Code ${result.devVerificationCode} is filled in — tap Verify Email. For real email: add a domain at resend.com/domains + set DND_FROM_EMAIL, or use QQ SMTP — see backend/EMAIL.md.`
-            : `Registered. Code ${result.devVerificationCode} is filled in below (also emailed if delivery succeeded).`
+          'Mail was not delivered (Resend test sender often blocks addresses until you verify a domain, and SMTP backup fails if the password is wrong). Code field left empty — see backend terminal [EMAIL-FALLBACK], or follow backend/GMAIL-DELIVERY.md for Gmail, then Send code again.'
         );
         return;
       }
@@ -392,13 +403,21 @@ const App: React.FC = () => {
     setAuthSuccessLine(null);
     try {
     const result = await apiFetch('/api/auth/send-verification', { method: 'POST', body: JSON.stringify({ email: authEmail }) });
-    if (result?.devVerificationCode) {
-      setVerificationCode(result.devVerificationCode);
+    if (shouldAutoFillDevCode(result)) {
+      setVerificationCode(result.devVerificationCode!);
       setError(null);
       setAuthSuccessLine(
-        result?.resendFallback
-          ? `Local dev: inbox did not receive mail. Your code ${result.devVerificationCode} is filled in — tap Verify Email. For real email add SMTP or verify a Resend domain.`
-          : `Verification code ${result.devVerificationCode} is filled in (check email too).`
+        result?.deliveredViaSmtpFallback
+          ? 'Verification code sent via backup SMTP — check inbox and spam; code filled below for convenience.'
+          : 'Verification code sent — check inbox and spam; code filled below for convenience.'
+      );
+      return;
+    }
+    if (result?.devVerificationCode && !deliveredToRealInbox(result)) {
+      setVerificationCode('');
+      setError(null);
+      setAuthSuccessLine(
+        'Mail was not delivered. Code field left empty — see backend terminal [EMAIL-FALLBACK], or backend/GMAIL-DELIVERY.md (Gmail SMTP or Resend domain), then try Send code again.'
       );
       return;
     }
@@ -459,13 +478,21 @@ const App: React.FC = () => {
       setAuthSuccessLine('If an account exists for that email, a reset code was sent (check inbox).');
       return;
     }
-    if (result?.devVerificationCode) {
-      setResetCode(result.devVerificationCode);
+    if (shouldAutoFillDevCode(result)) {
+      setResetCode(result.devVerificationCode!);
       setError(null);
       setAuthSuccessLine(
-        result?.resendFallback
-          ? `Local dev: reset code ${result.devVerificationCode} is filled in — use it with your new password below.`
-          : `If your account exists, reset code ${result.devVerificationCode} is filled in — check email too.`
+        result?.deliveredViaSmtpFallback
+          ? 'If your account exists, a reset code was sent via backup SMTP — check inbox; code filled below for convenience.'
+          : 'If your account exists, a reset code was sent — check inbox; code filled below for convenience.'
+      );
+      return;
+    }
+    if (result?.devVerificationCode && !deliveredToRealInbox(result)) {
+      setResetCode('');
+      setError(null);
+      setAuthSuccessLine(
+        'Mail was not delivered. Reset code field left empty — copy from your backend terminal ([EMAIL-FALLBACK]) if shown, or fix email config (backend/EMAIL.md).'
       );
       return;
     }

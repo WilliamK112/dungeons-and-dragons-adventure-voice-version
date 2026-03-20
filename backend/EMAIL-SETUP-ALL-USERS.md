@@ -41,4 +41,4 @@ curl -s http://localhost:8080/api/auth/status
 
 After a test **Send code**, a successful path shows `"emailDelivery":"resend"` or `"emailDelivery":"smtp"` (not `"console"`).
 
-More detail: **`EMAIL.md`** (Resend + SMTP + troubleshooting).
+More detail: **`EMAIL.md`** (Resend + SMTP + troubleshooting). **Gmail inboxes:** **`GMAIL-DELIVERY.md`**.
