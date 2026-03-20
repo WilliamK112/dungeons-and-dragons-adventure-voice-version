@@ -640,6 +640,7 @@ The following capabilities were added after the original README draft and are no
 - After login, each user gets isolated data scope for campaign create/list/resume/state save/replay (`/api/campaigns*`) and multiplayer room membership/chat (`/api/rooms*`).
 - Backend persistence is stored in SQLite (users, campaigns, game states, turn logs, dice rolls, rooms, members, and chat messages), so progress can be resumed across sessions.
 - Apps/APIs/services used: React frontend form UI, Node.js + Express backend APIs, `better-sqlite3` local database, `dotenv` environment loading, and optional email delivery via Resend API (fallback to console log in local mode).
+- **Configure real email:** `backend/SETUP.md`, then `cd backend && npm run email:check`.
 
 ![User Login Session](./public/Userlogin.png)
 

@@ -17,19 +17,17 @@ Send **through Google** so delivery to `you@gmail.com` works without a custom do
 
 1. Google Account → **Security** → enable **2-Step Verification**.
 2. **App passwords** → create a password for “Mail”.
-3. In `backend/.env`, **replace** any QQ SMTP lines with (use your address and the 16-char app password):
+3. In `backend/.env`, **replace** any QQ SMTP lines with (use your address and the 16-char app password). The server uses Nodemailer’s **`service: 'gmail'`** when `DND_SMTP_HOST=smtp.gmail.com` (reliable app-password auth):
 
    ```env
    DND_EMAIL_PROVIDER=auto
    DND_SMTP_HOST=smtp.gmail.com
-   DND_SMTP_PORT=587
-   DND_SMTP_SECURE=0
    DND_SMTP_USER=ckang2435@gmail.com
    DND_SMTP_PASS=xxxx xxxx xxxx xxxx
    DND_SMTP_FROM=ckang2435@gmail.com
    ```
 
-   Remove spaces in the app password if your client is picky: `xxxxxxxxxxxxxxxx`.
+   Port/starttls are optional for Gmail when using this host (handled by the transport). Remove spaces in the app password if needed: `xxxxxxxxxxxxxxxx`.
 
 4. Restart: `cd backend && npm run dev`.
 5. Click **Send code** again. You want `"emailDelivery":"smtp"` in the JSON (check with curl below).

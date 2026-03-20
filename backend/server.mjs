@@ -250,15 +250,20 @@ function createSmtpTransport() {
     }
     const host = process.env.DND_SMTP_HOST?.trim();
     if (!host) return null;
-    const port = Number(process.env.DND_SMTP_PORT || 587);
-    const secure = process.env.DND_SMTP_SECURE === '1' || port === 465;
     const user = process.env.DND_SMTP_USER;
     const pass = process.env.DND_SMTP_PASS ?? '';
+    const auth = user != null && user !== '' ? { user, pass } : undefined;
+    // Gmail: `service: 'gmail'` is more reliable than raw host/port for app-password auth.
+    if (host === 'smtp.gmail.com' && auth) {
+      return nodemailer.createTransport({ service: 'gmail', auth });
+    }
+    const port = Number(process.env.DND_SMTP_PORT || 587);
+    const secure = process.env.DND_SMTP_SECURE === '1' || port === 465;
     return nodemailer.createTransport({
       host,
       port,
       secure,
-      auth: user != null && user !== '' ? { user, pass } : undefined,
+      auth,
     });
   } catch {
     return null;
