@@ -14,6 +14,7 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 import Database from 'better-sqlite3';
 import { GoogleGenAI, Modality } from '@google/genai';
 import nodemailer from 'nodemailer';
+import pg from 'pg';
 
 const app = express();
 const port = process.env.PORT || 8080;
@@ -189,6 +190,60 @@ function initDb() {
   db.exec('CREATE INDEX IF NOT EXISTS idx_magic_nonce ON magic_login_tokens(nonce)');
 }
 initDb();
+
+const { Pool } = pg;
+const DATABASE_URL = process.env.DATABASE_URL || '';
+const pgPool = DATABASE_URL
+  ? new Pool({
+      connectionString: DATABASE_URL,
+      ssl: DATABASE_URL.includes('supabase.co') || DATABASE_URL.includes('neon.tech')
+        ? { rejectUnauthorized: false }
+        : undefined,
+    })
+  : null;
+
+async function initPostgresAuth() {
+  if (!pgPool) return;
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id BIGSERIAL PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS email_verification_codes (
+      id BIGSERIAL PRIMARY KEY,
+      email TEXT NOT NULL,
+      code TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS password_reset_codes (
+      id BIGSERIAL PRIMARY KEY,
+      email TEXT NOT NULL,
+      code TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS magic_login_tokens (
+      id BIGSERIAL PRIMARY KEY,
+      nonce TEXT UNIQUE NOT NULL,
+      user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_verify_email_pg ON email_verification_codes(email, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_reset_email_pg ON password_reset_codes(email, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_magic_nonce_pg ON magic_login_tokens(nonce);
+  `);
+}
+
+await initPostgresAuth();
 
 // --- Auth helpers ---
 const APP_SECRET = process.env.DND_APP_SECRET || 'local-dev-secret-change-me';
@@ -542,7 +597,7 @@ app.get('/api/auth/status', (_req, res) => {
   });
 });
 
-// --- Auth APIs ---
+// --- Auth APIs (Phase 1: Postgres-backed when DATABASE_URL is set) ---
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, name, password, verificationToken } = req.body || {};
@@ -554,40 +609,29 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Please verify email first (send code → verify code).' });
     }
 
-    const stmt = db.prepare('INSERT INTO users (email, name, password_hash, is_verified) VALUES (?, ?, ?, 1)');
-    const result = stmt.run(normalizedEmail, String(name).trim(), hashPassword(String(password)));
+    if (!pgPool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not configured for Postgres auth' });
 
-    return res.json({
-      ok: true,
-      userId: result.lastInsertRowid,
-      verified: true,
-      created: true,
-    });
+    const insert = await pgPool.query(
+      'INSERT INTO users (email, name, password_hash, is_verified) VALUES ($1,$2,$3,true) RETURNING id',
+      [normalizedEmail, String(name).trim(), hashPassword(String(password))]
+    );
+    return res.json({ ok: true, userId: Number(insert.rows[0].id), verified: true, created: true });
   } catch (e) {
     const msg = String(e?.message || e);
-    if (!msg.includes('UNIQUE')) {
-      return res.status(400).json({ ok: false, error: msg });
-    }
+    if (!/duplicate key/i.test(msg)) return res.status(400).json({ ok: false, error: msg });
     try {
       const normalizedEmail = String(req.body?.email || '').toLowerCase().trim();
-      const user = db.prepare('SELECT id, email, name FROM users WHERE email = ?').get(normalizedEmail);
-      if (!user) {
-        return res.status(400).json({ ok: false, error: 'Email already exists' });
-      }
+      const found = await pgPool.query('SELECT id, email, name FROM users WHERE email = $1 LIMIT 1', [normalizedEmail]);
+      const user = found.rows[0];
+      if (!user) return res.status(400).json({ ok: false, error: 'Email already exists' });
+
       const nonce = crypto.randomBytes(24).toString('base64url');
       const expSec = Math.floor(Date.now() / 1000) + MAGIC_LINK_TTL_MIN * 60;
-      db.prepare('INSERT INTO magic_login_tokens (nonce, user_id, expires_at, used) VALUES (?, ?, ?, 0)').run(
-        nonce,
-        user.id,
-        nowIsoPlusMinutes(MAGIC_LINK_TTL_MIN)
+      await pgPool.query(
+        'INSERT INTO magic_login_tokens (nonce, user_id, expires_at, used) VALUES ($1,$2,$3,false)',
+        [nonce, user.id, nowIsoPlusMinutes(MAGIC_LINK_TTL_MIN)]
       );
-      const magicToken = signToken({
-        typ: 'magic',
-        nonce,
-        userId: user.id,
-        email: user.email,
-        exp: expSec,
-      });
+      const magicToken = signToken({ typ: 'magic', nonce, userId: Number(user.id), email: user.email, exp: expSec });
       const base = (process.env.DND_PUBLIC_APP_URL || 'http://localhost:5173').replace(/\/$/, '');
       const link = `${base}/#magic=${encodeURIComponent(magicToken)}`;
       const mailResult = await sendSystemEmail({
@@ -600,13 +644,7 @@ app.post('/api/auth/register', async (req, res) => {
           `You can also use Login with your existing password.`,
         html: htmlMagicLinkEmail(link, user.email, user.name, MAGIC_LINK_TTL_MIN),
       });
-      return res.json({
-        ok: true,
-        existingAccount: true,
-        magicLinkSent: true,
-        ...emailApiFields(mailResult),
-        ...devExposeMagicLinkUrl(link),
-      });
+      return res.json({ ok: true, existingAccount: true, magicLinkSent: true, ...emailApiFields(mailResult), ...devExposeMagicLinkUrl(link) });
     } catch (inner) {
       return res.status(500).json({ ok: false, error: inner.message || 'Failed to send sign-in link' });
     }
@@ -618,56 +656,52 @@ app.post('/api/auth/send-verification', async (req, res) => {
     const { email } = req.body || {};
     if (!email) return res.status(400).json({ ok: false, error: 'email required' });
     const normalizedEmail = String(email).toLowerCase().trim();
-
     const code = genNumericCode(6);
-    db.prepare('INSERT INTO email_verification_codes (email, code, expires_at, used) VALUES (?, ?, ?, 0)').run(normalizedEmail, code, nowIsoPlusMinutes(CODE_TTL_MIN));
+
+    if (!pgPool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not configured for Postgres auth' });
+
+    await pgPool.query('INSERT INTO email_verification_codes (email, code, expires_at, used) VALUES ($1,$2,$3,false)', [normalizedEmail, code, nowIsoPlusMinutes(CODE_TTL_MIN)]);
     const mailResult = await sendSystemEmail({
       to: normalizedEmail,
       subject: 'Your D&D verification code',
       text: `Your verification code is: ${code}. It expires in ${CODE_TTL_MIN} minutes.`,
       html: htmlVerificationEmail(code, CODE_TTL_MIN),
     });
-    return res.json({
-      ok: true,
-      verificationSent: true,
-      ...emailApiFields(mailResult),
-      ...devExposeVerificationCode(code),
-    });
+    return res.json({ ok: true, verificationSent: true, ...emailApiFields(mailResult), ...devExposeVerificationCode(code) });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message || 'Failed to send verification code' });
   }
 });
 
-app.post('/api/auth/verify-email', (req, res) => {
+app.post('/api/auth/verify-email', async (req, res) => {
   const { email, code } = req.body || {};
   if (!email || !code) return res.status(400).json({ ok: false, error: 'email,code required' });
   const normalizedEmail = String(email).toLowerCase().trim();
   const codeIn = normalizeNumericCodeInput(code);
   if (!codeIn) return res.status(400).json({ ok: false, error: 'Invalid verification code' });
-  const row = db.prepare(`SELECT id, code, expires_at FROM email_verification_codes WHERE email = ? AND used = 0 ORDER BY id DESC LIMIT 1`).get(normalizedEmail);
-  if (!row) return res.status(400).json({ ok: false, error: 'No verification code found' });
-  if (new Date(row.expires_at).getTime() < Date.now()) return res.status(400).json({ ok: false, error: 'Verification code expired' });
-  if (codeIn !== normalizeNumericCodeInput(row.code)) return res.status(400).json({ ok: false, error: 'Invalid verification code' });
+  try {
+    if (!pgPool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not configured for Postgres auth' });
+    const q = await pgPool.query(
+      'SELECT id, code, expires_at FROM email_verification_codes WHERE email = $1 AND used = false ORDER BY id DESC LIMIT 1',
+      [normalizedEmail]
+    );
+    const row = q.rows[0];
+    if (!row) return res.status(400).json({ ok: false, error: 'No verification code found' });
+    if (new Date(row.expires_at).getTime() < Date.now()) return res.status(400).json({ ok: false, error: 'Verification code expired' });
+    if (codeIn !== normalizeNumericCodeInput(row.code)) return res.status(400).json({ ok: false, error: 'Invalid verification code' });
 
-  db.prepare('UPDATE email_verification_codes SET used = 1 WHERE id = ?').run(row.id);
+    await pgPool.query('UPDATE email_verification_codes SET used = true WHERE id = $1', [row.id]);
+    await pgPool.query('UPDATE users SET is_verified = true WHERE email = $1', [normalizedEmail]);
 
-  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
-  if (existing?.id) {
-    db.prepare('UPDATE users SET is_verified = 1 WHERE id = ?').run(existing.id);
+    const now = Math.floor(Date.now() / 1000);
+    const verificationToken = signToken({ typ: 'email_verify', email: normalizedEmail, iat: now, exp: now + 60 * 30 });
+    return res.json({ ok: true, verified: true, verificationToken });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message || 'Failed to verify email' });
   }
-
-  const now = Math.floor(Date.now() / 1000);
-  const verificationToken = signToken({
-    typ: 'email_verify',
-    email: normalizedEmail,
-    iat: now,
-    exp: now + 60 * 30,
-  });
-
-  return res.json({ ok: true, verified: true, verificationToken });
 });
 
-app.post('/api/auth/magic-link/consume', (req, res) => {
+app.post('/api/auth/magic-link/consume', async (req, res) => {
   try {
     const { token } = req.body || {};
     if (!token) return res.status(400).json({ ok: false, error: 'token required' });
@@ -675,20 +709,23 @@ app.post('/api/auth/magic-link/consume', (req, res) => {
     if (!payload || payload.typ !== 'magic' || !payload.nonce || !payload.userId) {
       return res.status(400).json({ ok: false, error: 'Invalid or expired link' });
     }
-    const row = db.prepare('SELECT id, user_id, expires_at FROM magic_login_tokens WHERE nonce = ? AND used = 0').get(payload.nonce);
-    if (!row || row.user_id !== payload.userId) {
-      return res.status(400).json({ ok: false, error: 'Invalid or expired link' });
-    }
-    if (new Date(row.expires_at).getTime() < Date.now()) {
-      return res.status(400).json({ ok: false, error: 'Link expired' });
-    }
-    const user = db.prepare('SELECT id, email, name FROM users WHERE id = ?').get(row.user_id);
+    if (!pgPool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not configured for Postgres auth' });
+
+    const r = await pgPool.query('SELECT id, user_id, expires_at FROM magic_login_tokens WHERE nonce = $1 AND used = false LIMIT 1', [payload.nonce]);
+    const row = r.rows[0];
+    if (!row || Number(row.user_id) !== Number(payload.userId)) return res.status(400).json({ ok: false, error: 'Invalid or expired link' });
+    if (new Date(row.expires_at).getTime() < Date.now()) return res.status(400).json({ ok: false, error: 'Link expired' });
+
+    const u = await pgPool.query('SELECT id, email, name FROM users WHERE id = $1 LIMIT 1', [row.user_id]);
+    const user = u.rows[0];
     if (!user) return res.status(400).json({ ok: false, error: 'User not found' });
-    db.prepare('UPDATE magic_login_tokens SET used = 1 WHERE id = ?').run(row.id);
-    db.prepare('UPDATE users SET is_verified = 1 WHERE id = ?').run(user.id);
+
+    await pgPool.query('UPDATE magic_login_tokens SET used = true WHERE id = $1', [row.id]);
+    await pgPool.query('UPDATE users SET is_verified = true WHERE id = $1', [user.id]);
+
     const now = Math.floor(Date.now() / 1000);
-    const sessionToken = signToken({ userId: user.id, email: user.email, name: user.name, iat: now, exp: now + TOKEN_TTL_SEC });
-    return res.json({ ok: true, token: sessionToken, user: { id: user.id, email: user.email, name: user.name } });
+    const sessionToken = signToken({ userId: Number(user.id), email: user.email, name: user.name, iat: now, exp: now + TOKEN_TTL_SEC });
+    return res.json({ ok: true, token: sessionToken, user: { id: Number(user.id), email: user.email, name: user.name } });
   } catch (e) {
     return res.status(400).json({ ok: false, error: e.message || 'Invalid link' });
   }
@@ -699,63 +736,68 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     const { email } = req.body || {};
     if (!email) return res.status(400).json({ ok: false, error: 'email required' });
     const normalizedEmail = String(email).toLowerCase().trim();
-    const user = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
-    if (!user) {
-      return res.json({ ok: true, sent: true, emailDelivery: 'skipped_no_user' });
-    }
+    if (!pgPool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not configured for Postgres auth' });
+
+    const found = await pgPool.query('SELECT id FROM users WHERE email = $1 LIMIT 1', [normalizedEmail]);
+    if (!found.rows[0]) return res.json({ ok: true, sent: true, emailDelivery: 'skipped_no_user' });
 
     const code = genNumericCode(6);
-    db.prepare('INSERT INTO password_reset_codes (email, code, expires_at, used) VALUES (?, ?, ?, 0)').run(normalizedEmail, code, nowIsoPlusMinutes(CODE_TTL_MIN));
+    await pgPool.query('INSERT INTO password_reset_codes (email, code, expires_at, used) VALUES ($1,$2,$3,false)', [normalizedEmail, code, nowIsoPlusMinutes(CODE_TTL_MIN)]);
     const mailResult = await sendSystemEmail({
       to: normalizedEmail,
       subject: 'Your D&D password reset code',
       text: `Your password reset code is: ${code}. It expires in ${CODE_TTL_MIN} minutes.`,
       html: htmlPasswordResetEmail(code, CODE_TTL_MIN),
     });
-    return res.json({
-      ok: true,
-      sent: true,
-      ...emailApiFields(mailResult),
-      ...devExposeVerificationCode(code),
-    });
+    return res.json({ ok: true, sent: true, ...emailApiFields(mailResult), ...devExposeVerificationCode(code) });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message || 'Failed to send reset code' });
   }
 });
 
-app.post('/api/auth/reset-password', (req, res) => {
+app.post('/api/auth/reset-password', async (req, res) => {
   const { email, code, newPassword } = req.body || {};
   if (!email || !code || !newPassword) return res.status(400).json({ ok: false, error: 'email,code,newPassword required' });
   const normalizedEmail = String(email).toLowerCase().trim();
-  const row = db.prepare(`SELECT id, code, expires_at FROM password_reset_codes WHERE email = ? AND used = 0 ORDER BY id DESC LIMIT 1`).get(normalizedEmail);
-  if (!row) return res.status(400).json({ ok: false, error: 'No reset code found' });
-  if (new Date(row.expires_at).getTime() < Date.now()) return res.status(400).json({ ok: false, error: 'Reset code expired' });
-  const codeIn = normalizeNumericCodeInput(code);
-  if (!codeIn || codeIn !== normalizeNumericCodeInput(row.code)) {
-    return res.status(400).json({ ok: false, error: 'Invalid reset code' });
-  }
+  try {
+    if (!pgPool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not configured for Postgres auth' });
+    const q = await pgPool.query(
+      'SELECT id, code, expires_at FROM password_reset_codes WHERE email = $1 AND used = false ORDER BY id DESC LIMIT 1',
+      [normalizedEmail]
+    );
+    const row = q.rows[0];
+    if (!row) return res.status(400).json({ ok: false, error: 'No reset code found' });
+    if (new Date(row.expires_at).getTime() < Date.now()) return res.status(400).json({ ok: false, error: 'Reset code expired' });
+    const codeIn = normalizeNumericCodeInput(code);
+    if (!codeIn || codeIn !== normalizeNumericCodeInput(row.code)) return res.status(400).json({ ok: false, error: 'Invalid reset code' });
 
-  const tx = db.transaction(() => {
-    db.prepare('UPDATE password_reset_codes SET used = 1 WHERE id = ?').run(row.id);
-    db.prepare('UPDATE users SET password_hash = ? WHERE email = ?').run(hashPassword(String(newPassword)), normalizedEmail);
-  });
-  tx();
-  return res.json({ ok: true, reset: true });
+    await pgPool.query('BEGIN');
+    await pgPool.query('UPDATE password_reset_codes SET used = true WHERE id = $1', [row.id]);
+    await pgPool.query('UPDATE users SET password_hash = $1 WHERE email = $2', [hashPassword(String(newPassword)), normalizedEmail]);
+    await pgPool.query('COMMIT');
+    return res.json({ ok: true, reset: true });
+  } catch (e) {
+    if (pgPool) await pgPool.query('ROLLBACK').catch(() => {});
+    return res.status(500).json({ ok: false, error: e.message || 'Failed to reset password' });
+  }
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ ok: false, error: 'email,password required' });
-  const user = db.prepare('SELECT id, email, name, password_hash, is_verified FROM users WHERE email = ?').get(String(email).toLowerCase().trim());
-  if (!user || !verifyPassword(String(password), user.password_hash)) {
-    return res.status(401).json({ ok: false, error: 'Invalid credentials' });
+  try {
+    if (!pgPool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not configured for Postgres auth' });
+    const q = await pgPool.query('SELECT id, email, name, password_hash, is_verified FROM users WHERE email = $1 LIMIT 1', [String(email).toLowerCase().trim()]);
+    const user = q.rows[0];
+    if (!user || !verifyPassword(String(password), user.password_hash)) return res.status(401).json({ ok: false, error: 'Invalid credentials' });
+    if (!user.is_verified) return res.status(403).json({ ok: false, error: 'Email not verified. Please verify first.' });
+
+    const now = Math.floor(Date.now() / 1000);
+    const token = signToken({ userId: Number(user.id), email: user.email, name: user.name, iat: now, exp: now + TOKEN_TTL_SEC });
+    return res.json({ ok: true, token, user: { id: Number(user.id), email: user.email, name: user.name } });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message || 'Login failed' });
   }
-  if (!user.is_verified) {
-    return res.status(403).json({ ok: false, error: 'Email not verified. Please verify first.' });
-  }
-  const now = Math.floor(Date.now() / 1000);
-  const token = signToken({ userId: user.id, email: user.email, name: user.name, iat: now, exp: now + TOKEN_TTL_SEC });
-  return res.json({ ok: true, token, user: { id: user.id, email: user.email, name: user.name } });
 });
 
 // --- Campaign + save/continue APIs ---
