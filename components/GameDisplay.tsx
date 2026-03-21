@@ -35,15 +35,15 @@ interface GameDisplayProps {
 const NARRATION_PRESETS = [
   {
     id: 'deep',
-    label: 'Deep Male',
-    backend: 'onyx',
+    label: 'Brian',
+    backend: 'en-US-BrianNeural',
     instructions: 'Dark fantasy narrator. Low, warm baritone. Calm, mysterious, intimate. Avoid bright or upbeat tone. Keep pacing steady and cinematic.',
     fallback: { pitch: 0.45, rate: 0.68, volume: 0.65, hints: ['baritone', 'deep', 'narrator', 'ralph', 'victor', 'daniel'] }
   },
   {
     id: 'whisper',
-    label: 'Whisper Mysterious',
-    backend: 'onyx',
+    label: 'Steffan',
+    backend: 'en-US-SteffanNeural',
     instructions: 'Whisper-like dark storyteller. Soft, close, secretive, and eerie. Keep volume gentle and emotional intensity restrained.',
     fallback: { pitch: 0.4, rate: 0.62, volume: 0.55, hints: ['whisper', 'narrator', 'deep', 'male'] }
   },
@@ -124,6 +124,7 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
   const narrationStopRef = useRef(false);
+  const narrationSessionRef = useRef(0);
 
   useEffect(() => {
     return () => {
@@ -163,12 +164,15 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
   const toggleStoryNarration = async () => {
     if (isNarrating) {
       narrationStopRef.current = true;
+      narrationSessionRef.current += 1;
       window.speechSynthesis?.cancel();
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
+        audioRef.current.src = '';
       }
       setIsNarrating(false);
+      setIsNarrationLoading(false);
       setNarrationProgress(null);
       return;
     }
@@ -177,6 +181,8 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
     if (!cleanText || isNarrationLoading) return;
 
     narrationStopRef.current = false;
+    narrationSessionRef.current += 1;
+    const sessionId = narrationSessionRef.current;
     const chunks = splitNarrationChunks(cleanText, 900).slice(0, 6);
     if (!chunks.length) return;
 
@@ -188,7 +194,7 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
       const preset = NARRATION_PRESETS.find(p => p.id === voicePreset) || NARRATION_PRESETS[0];
 
       for (let i = 0; i < chunks.length; i++) {
-        if (narrationStopRef.current) break;
+        if (narrationStopRef.current || sessionId !== narrationSessionRef.current) break;
         setNarrationProgress({ index: i + 1, total: chunks.length });
 
         const audioUrl = await generateStoryNarrationAudio(chunks[i], {
@@ -198,6 +204,11 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
           timeoutMs: 12000,
           instructions: preset.instructions,
         });
+
+        if (narrationStopRef.current || sessionId !== narrationSessionRef.current) {
+          try { URL.revokeObjectURL(audioUrl); } catch {}
+          break;
+        }
 
         if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
         audioUrlRef.current = audioUrl;
@@ -219,10 +230,12 @@ const GameDisplay: React.FC<GameDisplayProps> = ({
         alert('Failed to generate narration. Please check backend OPENAI_API_KEY and try again.');
       }
     } finally {
-      setIsNarrationLoading(false);
-      setIsNarrating(false);
-      setNarrationProgress(null);
-      narrationStopRef.current = false;
+      if (sessionId === narrationSessionRef.current) {
+        setIsNarrationLoading(false);
+        setIsNarrating(false);
+        setNarrationProgress(null);
+        narrationStopRef.current = false;
+      }
     }
   };
 

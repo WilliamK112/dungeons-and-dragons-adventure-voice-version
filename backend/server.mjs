@@ -2,6 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import crypto from 'node:crypto';
 import path from 'node:path';
+import os from 'node:os';
+import fs from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 
@@ -13,12 +17,15 @@ import nodemailer from 'nodemailer';
 
 const app = express();
 const port = process.env.PORT || 8080;
+const execFileAsync = promisify(execFile);
 
 app.use(cors());
 app.use(express.json({ limit: '4mb' }));
 
 // --- Local DB bootstrap (SQLite) ---
-const dbPath = process.env.DND_DB_PATH || path.join(__dirname, 'dnd-local.sqlite');
+const dbPath =
+  process.env.DND_DB_PATH ||
+  (process.env.VERCEL === '1' ? '/tmp/dnd-local.sqlite' : path.join(__dirname, 'dnd-local.sqlite'));
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 
@@ -927,6 +934,12 @@ app.post('/api/rooms/:id/messages', requireAuth, (req, res) => {
 });
 
 // --- Existing Gemini endpoints ---
+function resolveGeminiApiKeyFromRequest(req) {
+  const headerKey = String(req.headers['x-gemini-api-key'] || '').trim();
+  const bodyKey = String(req.body?.apiKey || '').trim();
+  return bodyKey || headerKey || process.env.GEMINI_API_KEY || process.env.API_KEY || '';
+}
+
 app.post('/api/story/next', async (req, res) => {
   try {
     const { prompt, model = 'gemini-2.5-flash' } = req.body || {};
@@ -935,9 +948,9 @@ app.post('/api/story/next', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Missing prompt (string)' });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    const apiKey = resolveGeminiApiKeyFromRequest(req);
     if (!apiKey) {
-      return res.status(500).json({ ok: false, error: 'Server missing GEMINI_API_KEY/API_KEY' });
+      return res.status(500).json({ ok: false, error: 'Server missing GEMINI_API_KEY/API_KEY (and no client apiKey provided)' });
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -972,9 +985,9 @@ app.post('/api/game/command', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Missing command (string)' });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    const apiKey = resolveGeminiApiKeyFromRequest(req);
     if (!apiKey) {
-      return res.status(500).json({ ok: false, error: 'Server missing GEMINI_API_KEY/API_KEY' });
+      return res.status(500).json({ ok: false, error: 'Server missing GEMINI_API_KEY/API_KEY (and no client apiKey provided)' });
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -1007,9 +1020,9 @@ app.post('/api/game/command', async (req, res) => {
 app.post('/api/live/session', async (req, res) => {
   let session;
   try {
-    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    const apiKey = resolveGeminiApiKeyFromRequest(req);
     if (!apiKey) {
-      return res.status(500).json({ ok: false, error: 'Server missing GEMINI_API_KEY/API_KEY' });
+      return res.status(500).json({ ok: false, error: 'Server missing GEMINI_API_KEY/API_KEY (and no client apiKey provided)' });
     }
 
     const {
@@ -1123,11 +1136,11 @@ app.post('/api/tts', async (req, res) => {
   try {
     const {
       text,
-      voice = 'onyx',
+      voice = 'en-US-AndrewNeural',
       model = 'gpt-4o-mini-tts',
       format = 'mp3',
       instructions = 'Speak in a calm, low, mysterious male narrator voice.',
-      provider = process.env.TTS_PROVIDER || 'openai',
+      provider = process.env.TTS_PROVIDER || 'edge-local',
       fallbackProvider = process.env.TTS_FALLBACK_PROVIDER || 'openai',
       timeoutMs = 15000,
     } = req.body || {};
@@ -1206,8 +1219,23 @@ app.post('/api/tts', async (req, res) => {
       return { ok: true, contentType, audioBuffer };
     };
 
+    const tryEdgeLocal = async () => {
+      try {
+        const edgeBin = process.env.EDGE_TTS_BIN || '/tmp/edge-tts-venv/bin/edge-tts';
+        const outExt = format === 'wav' ? 'wav' : 'mp3';
+        const outFile = path.join(os.tmpdir(), `dnd-tts-${Date.now()}-${Math.random().toString(36).slice(2)}.${outExt}`);
+        await execFileAsync(edgeBin, ['--voice', String(voice || 'en-US-AndrewNeural'), '--text', String(text), '--write-media', outFile], { timeout: timeoutMs });
+        const audioBuffer = await fs.readFile(outFile);
+        await fs.unlink(outFile).catch(() => {});
+        return { ok: true, contentType: outExt === 'wav' ? 'audio/wav' : 'audio/mpeg', audioBuffer };
+      } catch (e) {
+        return { ok: false, status: 500, error: `Edge local TTS failed: ${e instanceof Error ? e.message : String(e)}` };
+      }
+    };
+
     const resolveProvider = async (name) => {
       if (name === 'cosyvoice') return tryCosyVoice();
+      if (name === 'edge-local') return tryEdgeLocal();
       return tryOpenAI();
     };
 
@@ -1234,8 +1262,7 @@ app.post('/api/tts', async (req, res) => {
   }
 });
 
-app.listen(port, () => {
-  console.log(`dnd-gemini-backend listening on :${port}`);
+function logStartup() {
   console.log(`[db] ${dbPath}`);
   const publicAppUrl = (process.env.DND_PUBLIC_APP_URL || 'http://localhost:5173').replace(/\/$/, '');
   console.log(`[app] Magic-link base URL: ${publicAppUrl} (set DND_PUBLIC_APP_URL for production)`);
@@ -1262,7 +1289,7 @@ app.listen(port, () => {
         /^your[-_]?smtp/i.test(sp)
       ) {
         console.warn(
-          '[email] DND_SMTP_PASS is empty or still a placeholder — replace it with the SMTP authorization code from QQ Mail (Settings → Account), then restart.'
+          '[email] DND_SMTP_PASS is empty or still a placeholder — replace it with SMTP auth/app password, then restart.'
         );
       }
     }
@@ -1276,4 +1303,13 @@ app.listen(port, () => {
   if (process.env.NODE_ENV === 'production' && usingDefaultSecret) {
     console.warn('[security] DND_APP_SECRET is default — set a strong random secret in production.');
   }
-});
+}
+
+if (process.env.VERCEL !== '1') {
+  app.listen(port, () => {
+    console.log(`dnd-gemini-backend listening on :${port}`);
+    logStartup();
+  });
+}
+
+export default app;

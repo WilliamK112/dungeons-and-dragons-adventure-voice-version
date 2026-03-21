@@ -28,7 +28,7 @@ function getAI() {
 
 export const generateStoryNarrationAudio = async (
     text: string,
-    opts?: { voice?: string; model?: string; format?: 'mp3' | 'wav'; instructions?: string; timeoutMs?: number; provider?: 'openai' | 'cosyvoice'; fallbackProvider?: 'openai' | 'cosyvoice' }
+    opts?: { voice?: string; model?: string; format?: 'mp3' | 'wav'; instructions?: string; timeoutMs?: number; provider?: 'openai' | 'cosyvoice' | 'edge-local'; fallbackProvider?: 'openai' | 'cosyvoice' | 'edge-local' }
 ): Promise<string> => {
     const backendBaseUrl = getBackendBaseUrl();
     if (!backendBaseUrl && import.meta.env.PROD) {
@@ -45,12 +45,12 @@ export const generateStoryNarrationAudio = async (
         signal: controller.signal,
         body: JSON.stringify({
             text,
-            voice: opts?.voice || 'onyx',
+            voice: opts?.voice || 'en-US-AndrewNeural',
             model: opts?.model || 'gpt-4o-mini-tts',
             format: opts?.format || 'mp3',
             instructions: opts?.instructions || 'Speak in a calm, low, mysterious male narrator voice.',
-            provider: opts?.provider || ((process.env.VITE_TTS_PROVIDER as 'openai' | 'cosyvoice') || 'cosyvoice'),
-            fallbackProvider: opts?.fallbackProvider || ((process.env.VITE_TTS_FALLBACK_PROVIDER as 'openai' | 'cosyvoice') || 'openai'),
+            provider: opts?.provider || ((process.env.VITE_TTS_PROVIDER as 'openai' | 'cosyvoice' | 'edge-local') || 'edge-local'),
+            fallbackProvider: opts?.fallbackProvider || ((process.env.VITE_TTS_FALLBACK_PROVIDER as 'openai' | 'cosyvoice' | 'edge-local') || 'openai'),
             timeoutMs,
         }),
     }).finally(() => clearTimeout(timer));
@@ -112,6 +112,7 @@ async function callGemini(command: string, payload: any, schema: any): Promise<a
                 schema,
                 systemInstruction: SYSTEM_INSTRUCTION,
                 model: GEMINI_MODEL,
+                apiKey: getRuntimeApiKey() || undefined,
             };
 
             const callBackend = async (attempt: number) => {
