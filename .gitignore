@@ -35,3 +35,4 @@ backend/.env
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+.env*.local

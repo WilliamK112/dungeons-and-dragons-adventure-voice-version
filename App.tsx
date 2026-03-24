@@ -151,7 +151,11 @@ const App: React.FC = () => {
           devExposeCodeInApi: !!d.email?.devExposeCodeInApi,
         });
       } catch {
-        if (!cancelled) setMailStatus({ loading: false, error: 'network' });
+        // Backend unavailable — run in demo mode (no auth required)
+        console.warn('Backend unavailable, running in demo mode');
+        if (!cancelled) {
+          setMailStatus({ loading: false, demo: true });
+        }
       }
     })();
     return () => {

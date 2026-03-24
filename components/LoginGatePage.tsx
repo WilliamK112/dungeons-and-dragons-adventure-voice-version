@@ -5,6 +5,7 @@ import { KeyRound, Zap, ScrollText } from 'lucide-react';
 export type MailServerStatus =
   | { loading: true }
   | { loading: false; error: string }
+  | { loading: false; demo: true }  // Demo mode — no backend, skip auth
   | {
       loading: false;
       resend: boolean;
@@ -124,6 +125,11 @@ const LoginGatePage: React.FC<LoginGatePageProps> = ({
               <p className="mb-3 rounded-lg border border-rose-500/30 bg-rose-950/40 px-3 py-2 text-xs text-rose-200/90">
                 Cannot reach the API — start the backend (<code className="rounded bg-black/40 px-1">cd backend && npm run dev</code>) and keep the Vite dev server running.
               </p>
+            ) : null}
+            {!mailStatus?.loading && mailStatus && 'demo' in mailStatus ? (
+              <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-950/30 px-3 py-2 text-xs text-amber-100/85">
+                <strong className="text-amber-200/95">Demo mode</strong> — playing without account. Your progress won't be saved.
+              </div>
             ) : null}
             {mailStatus?.loading === false && mailStatus && 'resend' in mailStatus ? (
               <>
