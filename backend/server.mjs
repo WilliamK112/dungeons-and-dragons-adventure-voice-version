@@ -1347,9 +1347,11 @@ function logStartup() {
   }
 }
 
-if (process.env.VERCEL !== '1') {
-  app.listen(port, () => {
-    console.log(`dnd-gemini-backend listening on :${port}`);
+// Always listen (Cloud Run, Render, Railway, local) except Vercel serverless
+if (process.env.VERCEL !== '1' || process.env.HOST) {
+  const host = process.env.HOST || '0.0.0.0';
+  app.listen(port, host, () => {
+    console.log(`dnd-gemini-backend listening on ${host}:${port}`);
     logStartup();
   });
 }
