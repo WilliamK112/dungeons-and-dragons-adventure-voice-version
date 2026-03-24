@@ -1348,6 +1348,7 @@ function logStartup() {
 }
 
 // Always listen (Cloud Run, Render, Railway, local) except Vercel serverless
+app.use((req, res, next) => { console.log(`[DEBUG] ${req.method} ${req.path}`); next(); });
 if (process.env.VERCEL !== '1' || process.env.HOST) {
   const host = process.env.HOST || '0.0.0.0';
   app.listen(port, host, () => {
