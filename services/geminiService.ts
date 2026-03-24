@@ -2,6 +2,7 @@ import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { GameState, VideoPlan, Player, PlanningResponse } from '../types';
 import { GEMINI_MODEL, SYSTEM_INSTRUCTION, GAME_STATE_SCHEMA, VIDEO_PLAN_SCHEMA, PLANNING_SCHEMA } from '../constants';
 import { getBackendBaseUrl } from '../utils/backendUrl';
+import { traced } from '../utils/prompttrace';
 
 // Resolve API key from runtime input first, then env fallbacks.
 function getRuntimeApiKey(): string | null {
@@ -103,69 +104,72 @@ function parseGeminiError(e: unknown): string {
 }
 
 async function callGemini(command: string, payload: any, schema: any): Promise<any> {
-    try {
-        const backendBaseUrl = getBackendBaseUrl();
-        if (backendBaseUrl) {
-            const requestBody = {
-                command,
-                payload,
-                schema,
-                systemInstruction: SYSTEM_INSTRUCTION,
-                model: GEMINI_MODEL,
-                apiKey: getRuntimeApiKey() || undefined,
-            };
+    const endpoint = `story.${command.toLowerCase().replace(/_/g, '.')}`;
+    return traced({ endpoint, model: GEMINI_MODEL, provider: 'gemini', requestType: 'text' }, async () => {
+        try {
+            const backendBaseUrl = getBackendBaseUrl();
+            if (backendBaseUrl) {
+                const requestBody = {
+                    command,
+                    payload,
+                    schema,
+                    systemInstruction: SYSTEM_INSTRUCTION,
+                    model: GEMINI_MODEL,
+                    apiKey: getRuntimeApiKey() || undefined,
+                };
 
-            const callBackend = async (attempt: number) => {
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 25000);
-                try {
-                    const response = await fetch(`${backendBaseUrl}/api/game/command`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(requestBody),
-                        signal: controller.signal,
-                    });
+                const callBackend = async (attempt: number) => {
+                    const controller = new AbortController();
+                    const timeout = setTimeout(() => controller.abort(), 25000);
+                    try {
+                        const response = await fetch(`${backendBaseUrl}/api/game/command`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(requestBody),
+                            signal: controller.signal,
+                        });
 
-                    const data = await response.json();
-                    if (!response.ok || !data?.ok) {
-                        const isRetryable = response.status >= 500;
-                        if (isRetryable && attempt < 2) {
-                            return callBackend(attempt + 1);
+                        const data = await response.json();
+                        if (!response.ok || !data?.ok) {
+                            const isRetryable = response.status >= 500;
+                            if (isRetryable && attempt < 2) {
+                                return callBackend(attempt + 1);
+                            }
+                            throw new Error(data?.error || `Backend call failed with ${response.status}`);
                         }
-                        throw new Error(data?.error || `Backend call failed with ${response.status}`);
+                        return data.data;
+                    } finally {
+                        clearTimeout(timeout);
                     }
-                    return data.data;
-                } finally {
-                    clearTimeout(timeout);
-                }
-            };
+                };
 
-            return await callBackend(1);
-        }
-
-        const ai = getAI();
-        const llmResponse: GenerateContentResponse = await ai.models.generateContent({
-            model: GEMINI_MODEL,
-            contents: JSON.stringify({ command, payload }),
-            config: {
-                systemInstruction: SYSTEM_INSTRUCTION,
-                responseMimeType: "application/json",
-                responseSchema: schema,
+                return await callBackend(1);
             }
-        });
 
-        const text = llmResponse.text;
-        if (!text) {
-             throw new Error("Received an empty response from the AI.");
+            const ai = getAI();
+            const llmResponse: GenerateContentResponse = await ai.models.generateContent({
+                model: GEMINI_MODEL,
+                contents: JSON.stringify({ command, payload }),
+                config: {
+                    systemInstruction: SYSTEM_INSTRUCTION,
+                    responseMimeType: "application/json",
+                    responseSchema: schema,
+                }
+            });
+
+            const text = llmResponse.text;
+            if (!text) {
+                throw new Error("Received an empty response from the AI.");
+            }
+
+            const cleanedJson = text.trim().replace(/^```json\s*|```\s*$/g, '');
+            return JSON.parse(cleanedJson);
+        } catch (e) {
+            console.error("Error calling Gemini API or parsing response:", e);
+            const friendlyErrorMessage = parseGeminiError(e);
+            throw new Error(`Failed to get a valid response from the AI. ${friendlyErrorMessage}`);
         }
-
-        const cleanedJson = text.trim().replace(/^```json\s*|```\s*$/g, '');
-        return JSON.parse(cleanedJson);
-    } catch (e) {
-        console.error("Error calling Gemini API or parsing response:", e);
-        const friendlyErrorMessage = parseGeminiError(e);
-        throw new Error(`Failed to get a valid response from the AI. ${friendlyErrorMessage}`);
-    }
+    });
 }
 
 const normalizeGameState = (state: GameState): GameState => ({
@@ -273,6 +277,7 @@ export const generateVideoPlan = async (log: string[], duration_s: number): Prom
 };
 
 export const generateImage = async (scenePrompt: string, players: Player[], actionContext?: string): Promise<string> => {
+    return traced({ endpoint: 'scene.image_generate', model: 'gemini-2.5-flash-image', provider: 'gemini', requestType: 'image' }, async () => {
     try {
         const ai = getAI();
         const consistencyInstruction = `You are generating scene art for an ongoing campaign.
@@ -326,9 +331,11 @@ Character continuity is STRICT and mandatory:
         const friendlyErrorMessage = parseGeminiError(e);
         throw new Error(`Failed to generate image. ${friendlyErrorMessage}`);
     }
+    }); // end traced
 };
 
 export const generateCharacterPortrait = async (prompt: string): Promise<string> => {
+    return traced({ endpoint: 'character.portrait_generate', model: 'gemini-2.5-flash-image', provider: 'gemini', requestType: 'image' }, async () => {
     try {
         const ai = getAI();
         const fullPrompt = `Waist-up fantasy character portrait, digital painting, dungeons and dragons character art style, neutral background. Character details: ${prompt}`;
@@ -367,6 +374,7 @@ export const generateCharacterPortrait = async (prompt: string): Promise<string>
         const friendlyErrorMessage = parseGeminiError(e);
         throw new Error(`Failed to generate character portrait. ${friendlyErrorMessage}`);
     }
+    }); // end traced
 };
 
 /**
