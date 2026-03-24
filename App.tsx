@@ -850,8 +850,8 @@ const App: React.FC = () => {
   useEffect(() => {
     if (currentView !== 'game') return;
     if (!gameState) return;
-    // Prevent instant jump to success until at least 2 turns have been played.
-    if (turnsPlayed < 2) return;
+    // Prevent instant jump to success until at least 7 turns have been played.
+    if (turnsPlayed < 7) return;
     if (isObjectiveComplete(gameState)) {
       setCurrentView('success');
     }
