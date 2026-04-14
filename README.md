@@ -11,7 +11,7 @@ Target category: Creative Storyteller (Gemini Live Agent Challenge)
 
 ### D&D Front Page
 
-![D&D Front Page](./public/imageDandD-frontpage11.png)
+![D&D Front Page Animated](./public/Fantasy_Image_Animation_Request.gif)
 
 ### Table of Contents
 
