@@ -5,9 +5,8 @@ A production-style, multimodal D&D-inspired web app where players build a party,
 Target category: Creative Storyteller (Gemini Live Agent Challenge)
 
 ### Live Links
-
-- **App**: `https://dungeons-and-dragons-adventure-voic.vercel.app`
-- **Demo Video**: `https://www.youtube.com/watch?v=e1zc7FAKn3c`
+- **App**: [Play Demo](https://dungeons-and-dragons-adventure-voic.vercel.app)  
+- **Demo Video**: [Watch on YouTube](https://www.youtube.com/watch?v=e1zc7FAKn3c)
 
 ### D&D Front Page
 
