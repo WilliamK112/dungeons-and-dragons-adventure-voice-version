@@ -661,3 +661,9 @@ The following capabilities were added after the original README draft and are no
   <img src="./public/4.png" alt="Face Swap 4" width="300">
 </p>
 
+## Author and Portfolio
+
+This project is by [William Kang (Ching-Wei Kang)](https://williamkang.com/about-william-kang.html), a UW-Madison Computer Science and Data Science student building AI products, backend systems, and developer tools.
+
+See the canonical project profile at [williamkang.com/william-kang-projects.html](https://williamkang.com/william-kang-projects.html).
+
